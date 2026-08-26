@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+compiled/
+*.npy
+*.rnmodel
+results/

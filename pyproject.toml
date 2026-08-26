@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "railnet"
+version = "0.1.0"
+description = "RailNet — lossless topology-driven neural-network execution and PCIe accelerator research"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = ["numpy", "pandas"]
+authors = [{ name = "RailNet Contributors" }]
+
+[project.urls]
+Homepage = "https://github.com/railnet/railnet"
+Issues = "https://github.com/railnet/railnet/issues"
+
+[project.scripts]
+railnet = "railnet.cli:main"
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

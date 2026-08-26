@@ -1,0 +1,54 @@
+==============================================================================
+RAILNET STAGE 16 - DETERMINISTIC GENERATION
+==============================================================================
+tokenizer vocab   : 262145
+eos ids           : [1, 106]
+[rt] 'Hello'                                            ->   2 tok  ok=True
+[rt] 'Explain what an operating system is.'             ->   8 tok  ok=True
+[rt] 'Write a small Python function.'                   ->   7 tok  ok=True
+[rt] 'Merhaba dünya.'                                   ->   4 tok  ok=True
+[rt] 'Selam, bugün yapay zekâ hakkında konuşalım.'      ->  14 tok  ok=True
+[rt] 'Hello\nworld'                                     ->   4 tok  ok=True
+[rt] '2 + 2 ='                                          ->   6 tok  ok=True
+
+==============================================================================
+PROMPT: "'2"
+==============================================================================
+prompt tokens (3): [2, 236789, 236778]
+REFERENCE generation ...
+  [rss before ref: -0 MB]
+   [prefill done: 12.1s]
+   [decode 2/3] 9.6s tok=138
+   [decode 3/3] 13.6s tok=138
+  [rss after ref trim: -0 MB]
+  ref tokens (3): [138, 138, 138]
+  ref text : '      '
+RAILNET generation ...
+  [rss before rail: -0 MB]
+   [rail-load] layers 4/26
+   [rail-load] layers 8/26
+   [rail-load] layers 12/26
+   [rail-load] layers 16/26
+   [rail-load] layers 20/26
+   [rail-load] layers 24/26
+   [rail-load] layers 26/26
+   [prefill done: 341.1s]
+   [decode 2/3] 119.6s tok=138
+   [decode 3/3] 156.2s tok=138
+  rnt tokens (3): [138, 138, 138]
+  rnt text : '      '
+
+  TOKEN SEQUENCE EXACT : True
+  LOGIT BF16 MISMATCH  : 0 (over 3 steps x vocab)
+  KV CACHE EXACT       : True
+  TEXT OUTPUT EXACT    : True
+  RESULT               : PASS
+
+================================================================
+STAGE 16 SUMMARY
+================================================================
+tokenizer roundtrip : PASS
+generation tests    : 1
+ALL PASS            : True
+STAGE 16 VERDICT    : PASS
+================================================================

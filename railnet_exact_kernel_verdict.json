@@ -1,0 +1,19 @@
+{
+  "tensor": "model.layers.0.mlp.up_proj.weight",
+  "parameters": 7962624,
+  "unique_values": 4494,
+  "rails": 128,
+  "max_terms": 4,
+  "weight_exact": true,
+  "full_tensor_exact": true,
+  "math_output_exact": true,
+  "runtime_weight_array_absent": true,
+  "dense_multiplications": 7962624,
+  "shared_multiplications": 592593,
+  "multiplication_reduction": 0.9255781762393904,
+  "oracle_vectors": 4,
+  "oracle_outputs": 64,
+  "fp64_diagnostic_failures": 4,
+  "fp64_max_error": 3.5853128102980363,
+  "verdict": true
+}

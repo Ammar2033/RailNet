@@ -1,0 +1,6 @@
+cff-version: 1.2.0
+title: RailNet
+message: If you use RailNet, please cite this work.
+authors:
+  - family-names: RailNet Contributors
+license: Apache-2.0
