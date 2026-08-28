@@ -37,14 +37,19 @@ class TensorRecord:
     max_terms: int
     rails_bits: list[int]
     routes: dict  # str(bits) -> [[rail,sign],...]
+    compressed_routes: str = "" # Base64 zlib string of uint16 route_ids array
     checksum: str = ""
 
     def canonical_bytes(self) -> bytes:
-        canon = json.dumps({
+        payload = {
             "name": self.name, "shape": self.shape, "dtype": self.dtype,
             "rail_count": self.rail_count, "max_terms": self.max_terms,
             "rails": self.rails_bits, "routes": self.routes,
-        }, sort_keys=True, separators=(",", ":")).encode()
+        }
+        if self.compressed_routes:
+            payload["compressed_routes"] = self.compressed_routes
+            
+        canon = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         return canon
 
     def compute_checksum(self) -> str:

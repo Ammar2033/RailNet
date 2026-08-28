@@ -31,9 +31,9 @@ def read_rnmodel(path: str, device=None):
         header["checksum_sha256"] = stored
     # decode route maps
     route_maps = {}
+    from railnet.artifacts.compression import decompress_route_ids
     for k, b64 in header.get("route_maps_b64", {}).items():
-        buf = io.BytesIO(base64.b64decode(b64))
-        route_maps[k] = np.load(buf)
+        route_maps[k] = decompress_route_ids(b64, method="zlib")
     # return a lightweight model handle
     from railnet.runtime.transformer import RailNetModel
     tmp_dir = Path(str(p) + ".unpacked")

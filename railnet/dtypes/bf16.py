@@ -26,6 +26,10 @@ def fp32_array_to_bf16_bits(values: np.ndarray) -> np.ndarray:
     return (values.astype(np.float32).view(np.uint32) >> np.uint32(16)).astype(np.uint16)
 
 
+def bf16_bitwise_equal(a: int, b: int) -> bool:
+    return int(a) == int(b)
+
+
 @register
 class BF16DType(RailDType):
     info = DTypeInfo(name="bf16", bits=16, is_float=True, is_integer=False, status="PROVEN")

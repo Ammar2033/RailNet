@@ -7,24 +7,13 @@ Usage:
 from __future__ import annotations
 
 import time
-
 import numpy as np
 
 from railnet.dtypes import get_dtype
-from railnet.rails.learner import analyze_unique
-
-
-def _load_bf16_backend():
-    import importlib.util
-    from pathlib import Path
-    p = Path(__file__).resolve().parent.parent.parent / "11_global_layer0_shared_basis.py"
-    spec = importlib.util.spec_from_file_location("rn_compiler_fast", str(p))
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    return m
-
-
-_FAST = _load_bf16_backend()
+from railnet.rails._analysis import analyze_unique_values
+from railnet.rails._optimize import learn_basis
+from railnet.rails._compile import compile_exact_routes_exhaustive
+from railnet.core import RailTensor, Shape
 
 
 class RailNetCompiler:
@@ -32,7 +21,7 @@ class RailNetCompiler:
         self.model = model
         self.default_dtype = default_dtype
 
-    def compile_tensor(self, raw: np.ndarray, dtype: str | None = None, rails: int = 96, max_terms: int = 4, exact: bool = True):
+    def compile_tensor(self, raw: np.ndarray, dtype: str | None = None, rails: int = 96, max_terms: int = 4, exact: bool = True, name: str = "unknown", shape: tuple | Shape | None = None) -> RailTensor:
         dtype = dtype or self.default_dtype
         dt = get_dtype(dtype)
         if dtype.lower() != "bf16":
@@ -40,45 +29,45 @@ class RailNetCompiler:
 
         # raw: uint16 BF16 bits flattened? Accept either float32 or uint16
         if raw.dtype == np.uint16:
-            bits_raw = raw
+            bits_raw = raw.reshape(-1)
         elif raw.dtype == np.float32:
             from railnet.dtypes.bf16 import fp32_array_to_bf16_bits
-            bits_raw = fp32_array_to_bf16_bits(raw)
+            bits_raw = fp32_array_to_bf16_bits(raw.reshape(-1))
         else:
-            bits_raw = np.asarray(raw, dtype=np.uint16)
+            bits_raw = np.asarray(raw, dtype=np.uint16).reshape(-1)
 
-        from railnet.rails.learner import learn_basis as lb
-        # analyze_unique expects raw uint16
-        bits, counts, vals = _FAST.RN.analyze_unique_values(bits_raw) if hasattr(_FAST, "RN") else analyze_unique(bits_raw)
-        # FAST path may have RN
-        try:
-            learned = lb(vals, bits, counts, rails, max_terms)
-        except TypeError:
-            learned = lb(vals, bits, counts, rails)
-
+        # learn basis
+        bits, counts, vals = analyze_unique_values(bits_raw)
+        
+        # coordinate descent learning pipeline
+        learned = learn_basis(vals, bits, counts, rails, max_terms)
         rails_arr = learned["rails"]
+        
         # exhaustive compile
-        compile_fn = _FAST.FAST_COMPILE if hasattr(_FAST, "FAST_COMPILE") else _FAST.RN.compile_exact_routes_exhaustive
-        table = compile_fn(bits, rails_arr, max_terms)
+        table = compile_exact_routes_exhaustive(bits, rails_arr, max_terms)
         cov = sum(1 for b in bits if int(b) in table)
         ok = cov == len(bits)
+        
         if exact and not ok:
             raise RuntimeError(f"exact compilation failed: {cov}/{len(bits)} with rails={rails}")
-        return {
-            "rails": rails_arr,
-            "table": table,
-            "exact": int(cov),
-            "unique": int(len(bits)),
-            "lossless": bool(ok),
-            "dtype": dtype,
-            "rails_count": int(rails),
-            "max_terms": int(max_terms),
-        }
+
+        # resolve shape
+        if shape is None:
+            shape = Shape((len(bits_raw),))
+        elif isinstance(shape, tuple):
+            shape = Shape(shape)
+            
+        return RailTensor(
+            name=name,
+            shape=shape,
+            dtype=dtype,
+            rail_count=int(rails),
+            max_terms=int(max_terms),
+            rails_bits=rails_arr,
+            routes=table,
+            route_ids=bits_raw,
+        )
 
     def compile(self, path: str, dtype: str | None = None, rails: int = 96, max_terms: int = 4):
-        """Compile safetensors file -> per-tensor artifacts (delegates to proven bulk compile)."""
-        import importlib.util
-        from pathlib import Path
-        spec = importlib.util.spec_from_file_location("rn_15a", str(Path(__file__).resolve().parent.parent.parent / "15a_gemma_full_compile.py"))
-        # fallback to simple message
+        """Compile safetensors file -> per-tensor artifacts."""
         return {"status": "use research/experiments/15a_gemma_full_compile.py for bulk model compile", "path": path}

@@ -78,7 +78,10 @@ class RailDType(abc.ABC):
         return int(a_bits) == int(b_bits)
 
     def exact_equal_array(self, a: np.ndarray, b: np.ndarray) -> np.ndarray:
-        return a.view(np.uint16) == b.view(np.uint16) if a.dtype == b.dtype else a == b
+        if a.dtype == b.dtype:
+            st = self.storage_dtype
+            return a.view(st) == b.view(st)
+        return a == b
 
     # --- numpy helpers ---
 

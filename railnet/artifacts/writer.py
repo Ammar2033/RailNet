@@ -30,12 +30,10 @@ def write_rnmodel(out_path: str, model_name: str, dtype: str, tensors: list[dict
     }
     # embed route_ids as base64 if provided (small tensors)
     if route_maps:
-        import base64, io
+        from railnet.artifacts.compression import compress_route_ids
         embedded = {}
         for k, arr in route_maps.items():
-            buf = io.BytesIO()
-            np.save(buf, arr.astype(np.uint16))
-            embedded[k] = base64.b64encode(buf.getvalue()).decode()
+            embedded[k] = compress_route_ids(arr, method="zlib")
         manifest["route_maps_b64"] = embedded
 
     canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
