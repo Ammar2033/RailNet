@@ -15,6 +15,7 @@ authors = [{ name = "RailNet Contributors" }]
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]
 gemma = ["tokenizers"]
+hf = ["tokenizers", "transformers", "torch"]
 
 [project.urls]
 Homepage = "https://github.com/Ammar2033/RailNet"
@@ -25,6 +26,9 @@ railnet = "railnet.cli:main"
 
 [tool.ruff]
 line-length = 100
+# research/experiments/ is preserved history against a pre-refactor API — not linted.
+extend-exclude = ["research/experiments"]
+force-exclude = true
 
 [tool.ruff.lint]
 # EXE002 fires only because the repo is developed on an exFAT volume that

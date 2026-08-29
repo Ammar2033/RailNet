@@ -76,7 +76,7 @@ from railnet.runtime import RailNetModel
 compile_model("model_data/model.safetensors", out_dir="compiled", rails=96, max_terms=4)
 
 model = RailNetModel.load("compiled")
-logits = model.forward([2, 133, 40])              # final-token logits, no dense weights
+logits = model.forward([2, 133, 40])  # final-token logits, no dense weights
 out = model.generate("Merhaba", max_new_tokens=64)
 ```
 

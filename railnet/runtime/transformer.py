@@ -197,8 +197,15 @@ class RailNetModel:
             self.embed(ids), caches, 0, backend=backend, capture_hidden=capture_hidden
         )
         h = out[0]
-        logits = self._emb.logits_chunked(rms_norm(h[-1:], self._final_norm, self.ctx)[0])
+        logits = self.logits(h)
         return (logits, out[2]) if capture_hidden else logits
+
+    def logits(self, h) -> np.ndarray:
+        """Final norm -> tied LM head -> optional Gemma2 logit softcap."""
+        from railnet.transformer import softcap
+
+        raw = self._emb.logits_chunked(rms_norm(h[-1:], self._final_norm, self.ctx)[0])
+        return softcap(raw, self.ctx.final_softcap)
 
     def forward_dense(self, input_ids, **kw):
         """Verification reference: same ops, weights streamed dense from the safetensors."""

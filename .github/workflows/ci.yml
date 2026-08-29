@@ -9,7 +9,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e ".[dev]"
-      - run: ruff check railnet tests
-      - run: ruff format --check railnet tests
+      - run: ruff check .
+      - run: ruff format --check .
       - run: mypy railnet
       - run: pytest -q

@@ -45,8 +45,8 @@ to a subset while iterating; `max_iters` caps the basis-learning loop.
 from railnet.runtime import RailNetModel
 
 model = RailNetModel.load("compiled")
-logits = model.forward([2, 133, 40])        # rail path, no dense weight array
-ref    = model.forward_dense([2, 133, 40])  # dense reference, same graph
+logits = model.forward([2, 133, 40])  # rail path, no dense weight array
+ref = model.forward_dense([2, 133, 40])  # dense reference, same graph
 ```
 
 ## Full Gemma reproduction
@@ -60,6 +60,19 @@ Writes `results/gemma_repro.json`. The `PASS` verdict means the rail path is BF1
 identical to the dense computation of the same transformer graph (full vocab + per layer +
 greedy tokens). Use `--limit N` / `--only SUBSTR` / `--max-iters` to iterate on a subset;
 `--skip-compile` reuses an existing `compiled/`.
+
+## Cross-check against HuggingFace
+
+```bash
+pip install -e ".[hf]"
+python research/crosscheck_hf.py --prompt "The capital of France is"
+```
+
+Compares RailNet (rail and dense) against `transformers` Gemma3 on the same prompt: argmax,
+top-k overlap, logit delta, and an identical greedy continuation. RailNet runs float64 and HF
+runs bfloat16 (or `--hf-fp32`), so logits are close but not bitwise; the bar is behavioural.
+This is what promotes "rail ≡ our dense reference" to "the whole graph matches a reference
+implementation". Writes `results/crosscheck_hf.json`.
 
 ## Running the exactness tests
 

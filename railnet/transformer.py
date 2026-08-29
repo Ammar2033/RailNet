@@ -33,6 +33,9 @@ class GemmaContext:
         self.rope_global_base = cfg.get("rope_theta", self.rope_local_base)
         self.sliding_window = cfg.get("sliding_window")
         self.sliding_window_pattern = int(cfg.get("sliding_window_pattern", 0) or 0)
+        # Gemma2-style logit softcapping (null on Gemma3 1B, honoured if present).
+        self.attn_softcap = cfg.get("attn_logit_softcapping")
+        self.final_softcap = cfg.get("final_logit_softcapping")
         # Gemma3 casts the normalizer to the activation dtype (BF16) before use.
         self.embed_scale = float(
             bf16_array_to_float32(
@@ -80,6 +83,13 @@ def gelu_tanh(x):
 def softmax_last(x):
     e = np.exp(x - x.max(axis=-1, keepdims=True))
     return e / e.sum(axis=-1, keepdims=True)
+
+
+def softcap(x, cap):
+    """Gemma2 logit softcapping: ``cap * tanh(x / cap)`` (no-op when cap is falsy)."""
+    if not cap:
+        return x
+    return cap * np.tanh(x / cap)
 
 
 def causal_mask(scores, seq, kv_len, pos_offset, sliding_window=None):
@@ -134,6 +144,7 @@ def block_forward(
     kh_rep_rot = kh_rep * cos[None] + rotate_half(kh_rep) * sin[None]
 
     scores = np.matmul(qh, kh_rep_rot.transpose(0, 2, 1)) * ctx.q_scale
+    scores = softcap(scores, ctx.attn_softcap)
 
     window = None if ctx.is_global_layer(layer_idx) else ctx.sliding_window
     scores = causal_mask(scores, seq, kv_len, pos_offset, sliding_window=window)
@@ -144,8 +155,9 @@ def block_forward(
     attn_out = ctx_out.transpose(1, 0, 2).reshape(seq, ctx.heads * ctx.head_dim)
     o = lin("o_proj", attn_out)
 
+    # Gemma "sandwich" norm: normalize the attention branch, THEN add residual.
+    o = rms_norm(o, norms["post_attention_layernorm"], ctx)
     h = residual + o
-    h = rms_norm(h, norms["post_attention_layernorm"], ctx)
     residual = h
 
     hff = rms_norm(h, norms["pre_feedforward_layernorm"], ctx)

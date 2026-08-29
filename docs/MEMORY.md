@@ -40,11 +40,7 @@ RailNet implements strict `MemoryBudget` checking to assert the reality of its m
 from railnet.storage.memory import MemoryBudget
 
 budget = MemoryBudget(out_features, in_features)
-budget.assert_compliance(
-    dense_active=False,
-    route_map_type="uint16",
-    rails=96
-)
+budget.assert_compliance(dense_active=False, route_map_type="uint16", rails=96)
 # Returns honest structural byte counts for the compiled artifact
 report = budget.get_honest_report()
 ```

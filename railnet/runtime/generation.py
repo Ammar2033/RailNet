@@ -6,8 +6,6 @@ import contextlib
 
 import numpy as np
 
-from railnet.transformer import rms_norm
-
 
 def _encode(model, prompt, tokenizer):
     if isinstance(prompt, str):
@@ -18,7 +16,7 @@ def _encode(model, prompt, tokenizer):
 
 def _step_logits(model, h, caches, pos_offset, backend):
     h, _ = model.run_layers(h, caches, pos_offset, backend=backend)
-    return model._emb.logits_chunked(rms_norm(h[-1:], model._final_norm, model.ctx)[0])
+    return model.logits(h)
 
 
 def generate(

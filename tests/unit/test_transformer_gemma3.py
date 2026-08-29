@@ -3,7 +3,16 @@ embedding normalizer."""
 
 import numpy as np
 
-from railnet.transformer import GemmaContext, causal_mask, rope_cos_sin
+from railnet.transformer import (
+    GemmaContext,
+    block_forward,
+    causal_mask,
+    gelu_tanh,
+    rms_norm,
+    rope_cos_sin,
+    rotate_half,
+    softmax_last,
+)
 
 FULL_CFG = {
     "hidden_size": 1152,
@@ -85,3 +94,85 @@ class TestEmbedScale:
     def test_mini_normalizer(self):
         ctx = GemmaContext(MINI_CFG)
         assert abs(ctx.embed_scale - 8**0.5) < 0.1
+
+
+def _reference_layer(h, norms, weights, ctx, layer_idx):
+    """Independent hand-written Gemma3 decoder layer (no KV cache, single seq).
+
+    Pins the 'sandwich' norm order: each sub-block is normalized BEFORE the
+    residual add.
+    """
+    seq = h.shape[0]
+
+    def lin(name, x):
+        return x @ weights[name].T
+
+    # --- attention branch ---
+    x = rms_norm(h, norms["input_layernorm"], ctx)
+    q = lin("q_proj", x).reshape(seq, ctx.heads, ctx.head_dim).transpose(1, 0, 2)
+    k = lin("k_proj", x).reshape(seq, ctx.kv_heads, ctx.head_dim).transpose(1, 0, 2)
+    v = lin("v_proj", x).reshape(seq, ctx.kv_heads, ctx.head_dim).transpose(1, 0, 2)
+    q = rms_norm(q, norms["q_norm"], ctx)
+    k = rms_norm(k, norms["k_norm"], ctx)
+
+    cos, sin = rope_cos_sin(np.arange(seq), ctx, base=ctx.rope_base(layer_idx))
+    q = q * cos[None] + rotate_half(q) * sin[None]
+    k = k * cos[None] + rotate_half(k) * sin[None]
+    k = np.repeat(k, ctx.kv_groups, axis=0)
+    v = np.repeat(v, ctx.kv_groups, axis=0)
+
+    scores = (q @ k.transpose(0, 2, 1)) * ctx.q_scale
+    qi = np.arange(seq)[:, None]
+    kj = np.arange(seq)[None, :]
+    blocked = kj > qi
+    if not ctx.is_global_layer(layer_idx) and ctx.sliding_window:
+        blocked |= kj <= qi - ctx.sliding_window
+    scores = np.where(blocked, -np.inf, scores)
+    ctx_out = softmax_last(scores) @ v
+    o = lin("o_proj", ctx_out.transpose(1, 0, 2).reshape(seq, ctx.heads * ctx.head_dim))
+
+    o = rms_norm(o, norms["post_attention_layernorm"], ctx)
+    h = h + o
+
+    # --- feed-forward branch ---
+    x = rms_norm(h, norms["pre_feedforward_layernorm"], ctx)
+    mlp = lin("down_proj", gelu_tanh(lin("gate_proj", x)) * lin("up_proj", x))
+    mlp = rms_norm(mlp, norms["post_feedforward_layernorm"], ctx)
+    return h + mlp
+
+
+class TestDecoderLayerStructure:
+    def _fixtures(self, rng, ctx):
+        h = ctx.hidden
+        i = 16
+        norms = {
+            k: rng.standard_normal(h) * 0.1
+            for k in (
+                "input_layernorm",
+                "post_attention_layernorm",
+                "pre_feedforward_layernorm",
+                "post_feedforward_layernorm",
+            )
+        }
+        norms["q_norm"] = rng.standard_normal(ctx.head_dim) * 0.1
+        norms["k_norm"] = rng.standard_normal(ctx.head_dim) * 0.1
+        w = {
+            "q_proj": rng.standard_normal((ctx.heads * ctx.head_dim, h)) * 0.05,
+            "k_proj": rng.standard_normal((ctx.kv_heads * ctx.head_dim, h)) * 0.05,
+            "v_proj": rng.standard_normal((ctx.kv_heads * ctx.head_dim, h)) * 0.05,
+            "o_proj": rng.standard_normal((h, ctx.heads * ctx.head_dim)) * 0.05,
+            "gate_proj": rng.standard_normal((i, h)) * 0.05,
+            "up_proj": rng.standard_normal((i, h)) * 0.05,
+            "down_proj": rng.standard_normal((h, i)) * 0.05,
+        }
+        return norms, w
+
+    def test_block_forward_matches_independent_reference(self):
+        rng = np.random.default_rng(7)
+        ctx = GemmaContext(MINI_CFG)
+        norms, w = self._fixtures(rng, ctx)
+        h = rng.standard_normal((5, ctx.hidden))
+
+        got, _ = block_forward(h, norms, lambda n, x: x @ w[n].T, ctx, layer_idx=0)
+        expect = _reference_layer(h, norms, w, ctx, 0)
+        assert np.allclose(got, expect, atol=1e-12)

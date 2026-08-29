@@ -36,10 +36,18 @@ those two paths. This proves the rail representation + kernel lose no informatio
 dense computation.
 
 It does **not** by itself claim token-for-token equivalence with HuggingFace `modeling_gemma3`.
-`railnet.transformer` models the Gemma3 specifics it needs (BF16 `sqrt(hidden)` embedding
-normalizer, per-layer local/global RoPE base, sliding-window mask on local layers), but an
-independent cross-check against a reference implementation is a separate, still-open validation
-item. Run `python research/reproduce_gemma.py` for the rail≡dense reproduction.
+`railnet.transformer` is written to the Gemma3 spec — sandwich norm order (each sub-block
+normalized *before* the residual add), BF16 `sqrt(hidden)` embedding normalizer, per-layer
+local/global RoPE base, sliding-window mask on local layers, and optional Gemma2 logit
+softcapping — but empirical confirmation needs a run against a reference implementation:
+
+```bash
+python research/reproduce_gemma.py     # rail ≡ our dense reference
+python research/crosscheck_hf.py       # our graph vs transformers Gemma3  ([hf] extra)
+```
+
+`crosscheck_hf.py` reports argmax match, top-k overlap, logit delta and greedy-sequence match
+(RailNet is float64, HF is bfloat16 / `--hf-fp32`, so the bar is behavioural not bitwise).
 
 ## Validation tiers in code
 
@@ -51,6 +59,7 @@ item. Run `python research/reproduce_gemma.py` for the rail≡dense reproduction
 | Block | `verification.transformer.verify_block` | one decoder layer, rail vs dense |
 | Model | `verification.verify_forward` | full forward + per-layer hidden, rail vs dense |
 | Generation | `verification.verify_generation` | greedy token sequence, rail vs dense |
+| Reference | `research/crosscheck_hf.py` | whole graph vs `transformers` Gemma3 (behavioural) |
 
 ## Verification API
 
