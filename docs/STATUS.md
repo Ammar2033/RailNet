@@ -24,8 +24,8 @@ Last updated 2026-08-29.
 | add / total-op ratio | 2.5× / 1.30× | `compute_cost` |
 | weight-sized memory traffic | 1.0× | — |
 | FPGA datapath at matched throughput | **~12× fewer DSPs, ~2.4× more LUT** | `fpga` (analytical) |
-| train in rail basis — loss | matches dense (0.12 vs 0.12) | `train_rail_basis` |
-| train in rail basis — route-map compressibility | none by default (~10 rails/weight, every weight a unique route) | `train_rail_basis` |
+| train in rail basis — loss | matches dense (0.11 vs 0.12) | `train_rail_basis` |
+| train in rail basis — route-map compressibility | **none**, even with a hard 4-term budget + entropy + L1 (~90% of weights keep a unique route; 15/16 bits) | `train_rail_basis` |
 
 ## The strategic picture
 
@@ -51,10 +51,14 @@ verified against `railnet.verification`. Cheaper than a dense MAC array → the
 "reprogrammable weight-in-silicon" thesis holds. Not → fall back to **C** (FPGA /
 software contribution).
 
-**Parallel bet — train in the rail basis.** First probe: the rail basis trains
-to dense loss but does **not** compress for free. Whether forcing compression
-(hard term budget + strong route-sharing pressure) is possible at acceptable
-accuracy is the open research question and the only route back to a storage win.
+**Parallel bet — train in the rail basis: looking closed.** The rail basis
+trains to dense loss, but the route-map does not compress even with a hard
+4-term budget + entropy + L1 pressure — ~90% of weights keep a unique route.
+A linear layer wants ~`out·in` independent numbers and freely uses the ~10⁵
+available routes; there is no loss incentive to reuse them. A route-sharing VQ
+(force weights onto K learned prototype routes) is the last idea; the natural
+tendency is strongly against it. **Provisional read: the storage-compression
+path is closed. RailNet's on-chip story is dense route-map in dense NVM.**
 
 ## Honest venture read
 

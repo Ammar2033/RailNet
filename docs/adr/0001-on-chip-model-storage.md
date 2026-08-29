@@ -88,12 +88,14 @@ verified against `railnet.verification`. If the routing fabric is not
 meaningfully cheaper than a dense MAC array → fall back to **C** (FPGA / software
 contribution).
 
-**Parallel bet — train in the rail basis.** Options A/A′ are dead *for weights
-trained normally*. A model **trained** with weights constrained to
-`Σ sign·rail` and a route-map compressibility regulariser could learn the
-rail-local structure that does not occur naturally — reviving the storage story
-and letting bigger models fit. `research/` prototype on a nanoGPT-class model:
-measure natural route-map entropy vs a normally-trained baseline.
+**Parallel bet — train in the rail basis: probed, provisionally closed.**
+`research/train_rail_basis.py` (tiny char-LM): the rail basis trains to dense
+loss, but even with a hard 4-term budget + entropy + L1 the route-map does not
+compress — ~90% of weights keep a unique route, 15/16 bits. A linear layer
+freely spends the ~10⁵ available routes and the loss gives no reason to reuse
+them. A route-sharing VQ is the only remaining idea. Barring that, **the
+storage-compression path is closed** and the NVM in path B holds the full
+dense route-map.
 
 ## Consequences
 
