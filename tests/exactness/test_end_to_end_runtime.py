@@ -223,6 +223,17 @@ def test_verify_generation_rail_vs_dense(compiled):
     assert r["rail_tokens"] == r["dense_tokens"]
 
 
+def test_verify_kernel_rail_vs_dense(compiled):
+    from railnet.verification.kernel import verify_kernel
+
+    _manifest, out, _tensors = compiled
+    model = RailNetModel.load(str(out))
+    c = model._linears[0]["gate_proj"]
+    rng = np.random.default_rng(2)
+    x = (rng.standard_normal(c.in_features) * 0.1).astype(np.float64)
+    assert verify_kernel(x, model._dense_weight(0, "gate_proj"), c)["ok"]
+
+
 def test_rail_oracle_matches_dense_oracle(compiled):
     """Tightest tier: Fraction-exact rail eval == Fraction-exact dense eval."""
     from railnet.verification import dense_oracle, rail_oracle
