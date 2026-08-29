@@ -1,6 +1,6 @@
 # ADR 0001 — On-chip model storage strategy
 
-Status: **PROPOSED** (decision pending the route-map ceiling study).
+Status: **ACCEPTED** — path **B**, with a train-in-rail-basis bet in parallel.
 Date: 2026-08-29.
 
 ## Context
@@ -59,22 +59,50 @@ denser. *Cost:* an architecture bet; needs a real ReRAM density number to size;
 Ship the FPGA angle: ~12× fewer DSPs is real and useful for DSP-bound edge
 FPGA inference. A working software stack exists today. Not an ASIC venture.
 
+## Evidence
+
+Measured on the compiled Gemma3 1B artifacts (`railnet.analysis` +
+`research/*_probe.py`):
+
+| test | result | reads as |
+|---|---|---|
+| lossless codecs on the route-id map | zlib ≈ 0.80×, block-palette / RLE **> 1×** | **A dead** |
+| structured routing — distinct rails per 16×16 block | **56–67 of 96** (a whole row: 71–84) | **A′ dead** — no rail locality; structured cost ≈ **2× dense** |
+| Effective Representation Cost, as shipped | **1.003× dense** | route map ≈ weights, no compression |
+
+Trained transformer weights carry ~12 bits/weight of genuine entropy with **no
+exploitable block structure** in their rail assignment. Post-compile
+compression cannot fund a "model in SRAM" story.
+
 ## Decision
 
-Pending the route-map ceiling study (`research/routemap_ceiling.py`):
+**Path B.** The route-id map is stored **dense** in on-chip rewritable NVM
+(ReRAM / MRAM — ~ROM density, rewritable). RailNet's entire value is on the
+compute side: the rail decomposition needs ~12× fewer hard multipliers
+(`fpga_resource_model.md`), so the compute tile is small and more die goes to
+NVM → denser than raw-weights-in-NVM + dense MACs, and reprogrammable unlike
+etched ROM.
 
-- **sharing_factor ≫ 1** (big cross-tensor route reuse) → pursue **A**, keep exactness.
-- **sharing_factor ≈ 1 and entropy ceiling ~0.8×** (expected) → **A′ + B**:
-  - A′ as the near-term experiment (compiler only, no hardware, high information).
-  - B as the hardware target regardless — the route-map lives in dense rewritable
-    NVM; A′ only sets how much NVM.
-  - Keep strict-exact compile as the verification / "PROVEN" mode.
-- If A′ cannot beat ~2× and no ReRAM density path closes → fall back to **C**.
+**Gate:** an RTL sketch of the stage-A routing/gather fabric for one small tile,
+verified against `railnet.verification`. If the routing fabric is not
+meaningfully cheaper than a dense MAC array → fall back to **C** (FPGA / software
+contribution).
+
+**Parallel bet — train in the rail basis.** Options A/A′ are dead *for weights
+trained normally*. A model **trained** with weights constrained to
+`Σ sign·rail` and a route-map compressibility regulariser could learn the
+rail-local structure that does not occur naturally — reviving the storage story
+and letting bigger models fit. `research/` prototype on a nanoGPT-class model:
+measure natural route-map entropy vs a normally-trained baseline.
 
 ## Consequences
 
-- The `lossless` framing in `docs/EXACTNESS.md` gets a sibling `bounded-error`
-  mode; the verification hierarchy must gain an error-budget tier.
-- `railnet.analysis` needs a structured-routing cost model.
-- Hardware research reprioritises: routing fabric RTL (open problem #3) and a
-  ReRAM density literature scan move ahead of PCIe / board selection.
+- Hardware research reprioritises: **routing-fabric RTL** (open problem #3) and a
+  **ReRAM/MRAM density scan** move ahead of PCIe / board selection.
+- A `research/` train-in-rail-basis track opens (needs torch; installed).
+- Strict-exact compile stays the verification / "PROVEN" mode and the
+  credibility anchor. A `bounded-error` mode is only worth building if the
+  train-in-rail-basis bet shows promise.
+- The public framing drops any implied "runs 32B on one chip via compression";
+  the honest pitch is "reprogrammable weight-in-silicon, dense NVM, small shared
+  compute" — feasible for small models on one die, multi-die beyond.

@@ -32,16 +32,26 @@ That "if" is open problem #3 and it needs RTL, not analysis:
 - rail-value storage + the routing-table lookup (`rail_primitive.md`)
 - shared-multiplier count sweep 8/16/32/64/128/256 + time-mux (§22, §54)
 
+## Decision (ADR 0001): path B
+
+Route-map compression is **dead** for normally-trained weights — a 16×16 block
+touches 56–67 of 96 rails (no locality); structured routing costs ≈ 2× dense.
+So the route-id map is stored **dense in rewritable NVM**, and RailNet's value
+is entirely the ~12× smaller compute tile.
+
 ## Recommended next steps
 
-1. ~~Analytical FPGA resource model~~ — done (`fpga_resource_model.md`): the
-   datapath trade is favourable (~12× fewer DSPs).
-2. **RTL sketch of stage A** for one small tile (e.g. 64×64) — the sign-weighted
-   gather is the unmodelled cost. Get a real LUT / FF / Fmax number for it,
-   verified against `railnet.verification` as the golden reference.
-3. Then a full Phase-1 RTL block (`rail_bank` + stage A + stage B) for one tile.
-4. Finish the full Gemma compile; run `route_map_study.py` / `compute_cost` with
-   the attention-vs-MLP split for completeness.
+1. **RTL sketch of stage A** for one small tile (64×64) — the sign-weighted
+   gather is the one unmodelled cost and the gate for the whole ASIC path. Real
+   LUT / FF / Fmax, verified against `railnet.verification`. If it is not
+   clearly cheaper than a dense MAC array → fall back to option C.
+2. **ReRAM / MRAM density + endurance scan** — size the route-id NVM for a 1B
+   model (`reprogrammable_weight_in_silicon.md`).
+3. **Parallel research: train in the rail basis** — the only route back to a
+   storage win (`docs/adr/0001`, parallel bet). nanoGPT-class prototype:
+   constrain weights to `Σ sign·rail` during training + a route-map
+   compressibility regulariser; measure natural route-map entropy vs baseline.
+4. Then a full Phase-1 RTL block (`rail_bank` + stage A + stage B) for one tile.
 
 Still do **not** pick a board, write PCIe/DMA, or open GDSII discussions before
-step 2 gives a real gather cost.
+step 1 gives a real gather cost.
