@@ -81,11 +81,13 @@ def cmd_benchmark(args):
 
 
 def cmd_cost(args):
-    from railnet.analysis import representation_cost
+    from railnet.analysis import compute_cost, representation_cost
 
-    r = representation_cost(args.path)
-    r.pop("per_tensor", None)
-    print(json.dumps(r, indent=2))
+    storage = representation_cost(args.path)
+    storage.pop("per_tensor", None)
+    compute = compute_cost(args.path, tokens=args.tokens)
+    compute.pop("per_tensor", None)
+    print(json.dumps({"storage": storage, "compute": compute}, indent=2))
 
 
 def cmd_info(args):
@@ -129,8 +131,9 @@ def build_parser():
     s = sub.add_parser("benchmark")
     s.add_argument("model", nargs="?")
     s.set_defaults(func=cmd_benchmark)
-    s = sub.add_parser("cost", help="Effective Representation Cost of a compiled dir")
+    s = sub.add_parser("cost", help="storage + compute cost of a compiled dir")
     s.add_argument("path")
+    s.add_argument("--tokens", type=int, default=1)
     s.set_defaults(func=cmd_cost)
     s = sub.add_parser("artifact")
     s.add_argument("sub")
