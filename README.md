@@ -23,7 +23,8 @@ Same physical fabric can execute different models by reprogramming rail values +
 
 Gemma3 1B class (`hidden=1152, layers=26, vocab=262144, BF16`):
 
-* **182 / 182 tensors lossless, 0 failures** (Stage 15A)
+* **182 / 182 linear tensors compiled lossless** via the rail-count escalation ladder
+  (most at 96 rails, ~7 need 128–192) — `railnet compile --resume`
 * **26 / 26 layers + full-vocab logits BF16-bitwise identical between the RailNet rail
   path and a dense reference of the same graph** (Stage 15B) — i.e. the rail representation
   loses no information relative to the dense computation. See "What 'exact' means" in
