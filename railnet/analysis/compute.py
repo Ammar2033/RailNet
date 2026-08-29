@@ -24,10 +24,10 @@ import numpy as np
 
 def _avg_terms(artifact_path: Path, route_map_path: Path) -> tuple[float, int, int, int]:
     art = json.loads(artifact_path.read_text())
-    route_terms = {int(k): len(v) for k, v in art["routes"].items()}
     ids = np.load(route_map_path)
-    terms = np.array([route_terms[int(b)] for b in np.unique(ids)])
-    _, inv = np.unique(ids, return_inverse=True)
+    uniq, inv = np.unique(ids, return_inverse=True)
+    route_terms = {int(k): len(v) for k, v in art["routes"].items()}
+    terms = np.fromiter((route_terms[int(b)] for b in uniq), dtype=np.int64, count=uniq.size)
     per_elt_mean = float(terms[inv].mean())
     out_f, in_f = art["shape"]
     return per_elt_mean, int(art["rail_count"]), int(out_f), int(in_f)
