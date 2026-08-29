@@ -27,6 +27,7 @@ from railnet.safetensors_reader import list_tensors, read_tensor_raw, tensor_met
 
 ATTN_ROLES = ("q_proj", "k_proj", "v_proj", "o_proj")
 MLP_ROLES = ("gate_proj", "up_proj", "down_proj")
+RAIL_LADDER = (96, 128, 192, 256)
 
 
 def _classify(name: str):
@@ -153,6 +154,7 @@ def compile_model(
                     "layer": layer,
                     "role": role,
                     "shape": list(data["shape"]),
+                    "rails": int(data.get("rail_count", rails)),
                     "artifact": str(art_path.relative_to(out)),
                     "route_map": str(map_path.relative_to(out)),
                     "sha256": data["checksum_sha256"],
@@ -166,21 +168,34 @@ def compile_model(
         assert meta["dtype"] == "BF16", f"{name}: expected BF16, got {meta['dtype']}"
         if verbose:
             print(f"[{i + 1}/{len(targets)}] {name}  shape={tuple(shape)}", flush=True)
-        try:
-            tensor = compiler.compile_tensor(
-                raw,
-                dtype=dtype,
-                rails=rails,
-                max_terms=max_terms,
-                name=name,
-                shape=tuple(shape),
-                max_iters=max_iters,
-            )
-        except RuntimeError as exc:
-            failed.append((name, str(exc)))
-            manifest["tensors"][name] = {"status": "FAILED", "error": str(exc)}
+
+        # Escalation ladder: retry at more rails (and more iters) until lossless.
+        ladder = [(rails, max_iters), *[(r, max(max_iters, 60)) for r in RAIL_LADDER if r > rails]]
+        tensor = None
+        used_rails = rails
+        last_exc = ""
+        for r, it in ladder:
+            try:
+                tensor = compiler.compile_tensor(
+                    raw,
+                    dtype=dtype,
+                    rails=r,
+                    max_terms=max_terms,
+                    name=name,
+                    shape=tuple(shape),
+                    max_iters=it,
+                )
+                used_rails = r
+                break
+            except RuntimeError as exc:
+                last_exc = str(exc)
+                if verbose:
+                    print(f"    rails={r}: {exc} — escalating", flush=True)
+        if tensor is None:
+            failed.append((name, last_exc))
+            manifest["tensors"][name] = {"status": "FAILED", "error": last_exc}
             if verbose:
-                print(f"    FAILED: {exc}", flush=True)
+                print(f"    FAILED: {last_exc}", flush=True)
             continue
 
         digest = _write_artifact(art_path, tensor)
@@ -192,6 +207,7 @@ def compile_model(
             "layer": layer,
             "role": role,
             "shape": list(shape),
+            "rails": used_rails,
             "artifact": str(art_path.relative_to(out)),
             "route_map": str(map_path.relative_to(out)),
             "sha256": digest,
