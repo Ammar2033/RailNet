@@ -240,3 +240,40 @@ def test_rail_oracle_matches_dense_oracle(compiled):
     y_rail = rail_oracle(x, np.array(art["rails"], dtype=np.uint16), routes, c.route_ids)
     y_dense = dense_oracle(x, dense_w)
     assert np.array_equal(fp32_array_to_bf16_bits(y_rail), fp32_array_to_bf16_bits(y_dense))
+
+
+def test_from_source_dense_matches_compiled_dense(compiled):
+    """A dense-only model built straight from the safetensors gives the same
+    dense-backend result as the compiled model."""
+    _manifest, out, _tensors = compiled
+    src = out.parent / "model.safetensors"
+
+    compiled_model = RailNetModel.load(str(out))
+    source_model = RailNetModel.from_source(str(src))
+
+    ids = [3, 1, 4, 1, 5]
+    a = compiled_model.forward(ids, backend="dense")
+    b = source_model.forward(ids, backend="dense")
+    assert np.array_equal(a, b)
+
+    with pytest.raises(KeyError, match="not compiled"):
+        source_model.forward(ids, backend="rail")
+
+
+def test_compile_resume_skips_completed(tmp_path):
+    from railnet.compiler.model import compile_model
+
+    rng = np.random.default_rng(3)
+    src, _ = _build_model(rng, tmp_path)
+    out = tmp_path / "c"
+
+    first = compile_model(str(src), out_dir=str(out), rails=32, max_iters=8, verbose=False)
+    arts = sorted(out.glob("layers/*/*.json"))
+    mtimes = {p: p.stat().st_mtime_ns for p in arts}
+
+    second = compile_model(
+        str(src), out_dir=str(out), rails=32, max_iters=8, resume=True, verbose=False
+    )
+    assert second["pass_count"] == first["pass_count"] == 14
+    # nothing recompiled -> per-tensor artifact files untouched
+    assert {p: p.stat().st_mtime_ns for p in arts} == mtimes

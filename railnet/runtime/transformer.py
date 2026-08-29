@@ -126,12 +126,40 @@ class RailNetModel:
             raise FileNotFoundError(f"no manifest.json at {manifest_path}")
         return cls(json.loads(manifest_path.read_text()), p, device=device)
 
+    @classmethod
+    def from_source(cls, safetensors_path, config_path=None, tokenizer_path=None, device=None):
+        """A dense-only model built straight from the safetensors — no compile.
+
+        Only ``forward(backend="dense")`` / ``forward_dense`` work; the rail path
+        needs a compiled directory (use :meth:`load`). Handy for cross-checking
+        the transformer graph against a reference implementation.
+        """
+        src = Path(safetensors_path).resolve()
+        cfg_path = Path(config_path) if config_path else src.parent / "config.json"
+        tok_path = Path(tokenizer_path) if tokenizer_path else src.parent / "tokenizer.json"
+        manifest = {
+            "config": json.loads(cfg_path.read_text()),
+            "source_model": str(src),
+            "tokenizer": str(tok_path) if tok_path.exists() else None,
+            "tensors": {},
+            "constants": {
+                "final_norm": "model.norm.weight",
+                "embedding": "model.embed_tokens.weight",
+            },
+        }
+        return cls(manifest, src.parent, device=device)
+
     # ---- linear backends -------------------------------------------
 
     def _rail_backend(self, b: int):
         comp = self._linears[b]
 
         def lin(short: str, x: np.ndarray) -> np.ndarray:
+            if short not in comp:
+                raise KeyError(
+                    f"layer {b} {short!r} not compiled — run compile_model / railnet compile "
+                    "(from_source models are dense-only)"
+                )
             c = comp[short]
             out = np.empty((x.shape[0], c.out_features), dtype=np.float64)
             for r in range(x.shape[0]):

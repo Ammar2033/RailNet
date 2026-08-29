@@ -39,6 +39,7 @@ def main() -> int:
     ap.add_argument("--max-iters", type=int, default=300)
     ap.add_argument("--only", default=None)
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--resume", action="store_true", help="skip tensors already compiled in --out")
     ap.add_argument("--skip-compile", action="store_true")
     ap.add_argument("--prompt", default="Hello")
     ap.add_argument("--max-new-tokens", type=int, default=8)
@@ -62,6 +63,7 @@ def main() -> int:
             max_iters=args.max_iters,
             only=args.only,
             limit=args.limit,
+            resume=args.resume,
         )
         report["compile"] = {
             "verdict": m["verdict"],

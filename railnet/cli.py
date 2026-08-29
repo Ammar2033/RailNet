@@ -24,8 +24,10 @@ def cmd_compile(args):
         dtype=args.dtype,
         rails=args.rails,
         max_terms=args.terms,
+        max_iters=args.max_iters,
         only=args.only,
         limit=args.limit,
+        resume=args.resume,
     )
     print(
         json.dumps(
@@ -99,8 +101,10 @@ def build_parser():
     s.add_argument("--rails", type=int, default=96)
     s.add_argument("--terms", type=int, default=4)
     s.add_argument("--out", default="compiled")
+    s.add_argument("--max-iters", type=int, default=300, help="basis-learning iteration cap")
     s.add_argument("--only", default=None, help="substring filter on tensor names")
     s.add_argument("--limit", type=int, default=None, help="compile at most N tensors")
+    s.add_argument("--resume", action="store_true", help="skip tensors already in --out")
     s.set_defaults(func=cmd_compile)
     s = sub.add_parser("verify")
     s.add_argument("path")

@@ -48,6 +48,17 @@ def _classify(name: str):
     return None
 
 
+def _flush_manifest(out: Path, manifest: dict) -> Path:
+    m = dict(manifest)
+    m["pass_count"] = sum(1 for e in m["tensors"].values() if e.get("status") == "PASS")
+    m["checksum_sha256"] = checksum_manifest(m)
+    man_path = out / "manifest.json"
+    tmp = man_path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(m, indent=2), encoding="utf-8")
+    tmp.replace(man_path)
+    return man_path
+
+
 def _write_artifact(path: Path, tensor) -> str:
     """Write a single compiled-tensor JSON with a canonical sha256, return the digest."""
     data = tensor.to_dict()
@@ -71,6 +82,7 @@ def compile_model(
     limit: int | None = None,
     config_path: str | None = None,
     tokenizer_path: str | None = None,
+    resume: bool = False,
     verbose: bool = True,
 ) -> dict:
     src = Path(safetensors_path).resolve()
@@ -128,6 +140,25 @@ def compile_model(
 
     failed = []
     for i, (name, layer, role) in enumerate(targets):
+        art_path = out / "layers" / f"layer_{layer:02d}" / f"{role}.json"
+        map_path = out / "layers" / f"layer_{layer:02d}" / f"{role}.routeids.npy"
+
+        if resume and art_path.exists() and map_path.exists():
+            ok_art, data = verify_checksum(str(art_path))
+            if ok_art and tuple(data.get("shape", ())) == tuple(np.load(map_path).shape):
+                manifest["tensors"][name] = {
+                    "status": "PASS",
+                    "layer": layer,
+                    "role": role,
+                    "shape": list(data["shape"]),
+                    "artifact": str(art_path.relative_to(out)),
+                    "route_map": str(map_path.relative_to(out)),
+                    "sha256": data["checksum_sha256"],
+                }
+                if verbose:
+                    print(f"[{i + 1}/{len(targets)}] {name}  (resumed)", flush=True)
+                continue
+
         raw, shape = read_tensor_raw(name, model_file=src)
         meta = tensor_metadata(name, model_file=src)
         assert meta["dtype"] == "BF16", f"{name}: expected BF16, got {meta['dtype']}"
@@ -150,8 +181,6 @@ def compile_model(
                 print(f"    FAILED: {exc}", flush=True)
             continue
 
-        art_path = out / "layers" / f"layer_{layer:02d}" / f"{role}.json"
-        map_path = out / "layers" / f"layer_{layer:02d}" / f"{role}.routeids.npy"
         digest = _write_artifact(art_path, tensor)
         assert tensor.route_ids is not None
         np.save(map_path, tensor.route_ids.astype(np.uint16).reshape(tuple(shape)))
@@ -166,17 +195,15 @@ def compile_model(
             "sha256": digest,
         }
 
+        if (i + 1) % 10 == 0:
+            _flush_manifest(out, manifest)
+
     manifest["pass_count"] = sum(
         1 for e in manifest["tensors"].values() if e.get("status") == "PASS"
     )
     manifest["fail_count"] = len(failed)
     manifest["verdict"] = "PASS" if not failed and targets else "INCOMPLETE"
-    manifest["checksum_sha256"] = checksum_manifest(manifest)
-
-    man_path = out / "manifest.json"
-    tmp = man_path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    tmp.replace(man_path)
+    man_path = _flush_manifest(out, manifest)
 
     if verbose:
         print(

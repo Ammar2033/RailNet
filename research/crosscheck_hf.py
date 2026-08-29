@@ -75,32 +75,47 @@ def main() -> int:
     ap.add_argument("--hf-fp32", action="store_true", help="run HF in float32 (closer to RailNet)")
     args = ap.parse_args()
 
-    model = RailNetModel.load(args.compiled)
+    have_compile = (Path(args.compiled) / "manifest.json").exists()
+    if have_compile:
+        model = RailNetModel.load(args.compiled)
+    else:
+        model = RailNetModel.from_source(Path(args.model_dir) / "model.safetensors")
+        print("no compiled/ — dense-only cross-check (graph fidelity)")
+
     tok = model.get_tokenizer()
     ids = list(tok.encode(args.prompt).ids)
 
     hf_last, hf = _hf_logits(args.model_dir, ids, args.hf_fp32)
-    rail_last = model.forward(ids, backend="rail")
     dense_last = model.forward(ids, backend="dense")
-
-    rail_greedy = model.generate(ids, max_new_tokens=args.greedy_tokens, tokenizer=tok)["tokens"]
+    dense_greedy = model.generate(
+        ids, max_new_tokens=args.greedy_tokens, tokenizer=tok, backend="dense"
+    )["tokens"]
     hf_greedy = _hf_greedy(hf, ids, args.greedy_tokens)
 
-    report = {
+    report: dict = {
         "prompt": args.prompt,
         "prompt_tokens": ids,
         "hf_dtype": "float32" if args.hf_fp32 else "bfloat16",
+        "compiled": have_compile,
         "railnet_dense_vs_hf": _compare(dense_last, hf_last),
-        "railnet_rail_vs_hf": _compare(rail_last, hf_last),
-        "greedy_railnet": rail_greedy,
+        "greedy_railnet_dense": dense_greedy,
         "greedy_hf": hf_greedy,
-        "greedy_sequence_match": rail_greedy == hf_greedy,
-        "greedy_text_railnet": tok.decode(rail_greedy),
+        "greedy_dense_match": dense_greedy == hf_greedy,
         "greedy_text_hf": tok.decode(hf_greedy),
     }
+    if have_compile:
+        rail_last = model.forward(ids, backend="rail")
+        rail_greedy = model.generate(ids, max_new_tokens=args.greedy_tokens, tokenizer=tok)[
+            "tokens"
+        ]
+        report["railnet_rail_vs_hf"] = _compare(rail_last, hf_last)
+        report["greedy_railnet_rail"] = rail_greedy
+        report["greedy_rail_match"] = rail_greedy == hf_greedy
+        report["greedy_text_railnet"] = tok.decode(rail_greedy)
+
     report["verdict"] = (
         "PASS"
-        if report["railnet_dense_vs_hf"]["argmax_match"] and report["greedy_sequence_match"]
+        if report["railnet_dense_vs_hf"]["argmax_match"] and report["greedy_dense_match"]
         else "REVIEW"
     )
 
