@@ -18,6 +18,7 @@ htmlcov/
 # RailNet artifacts / outputs
 compiled/
 results/
+hardware/rtl/build/
 *.npy
 *.rnmodel
 

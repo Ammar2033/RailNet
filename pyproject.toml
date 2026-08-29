@@ -16,6 +16,7 @@ authors = [{ name = "RailNet Contributors" }]
 dev = ["pytest", "ruff", "mypy"]
 gemma = ["tokenizers"]
 hf = ["tokenizers", "transformers", "torch"]
+rtl = ["amaranth>=0.5", "yowasp-yosys"]
 
 [project.urls]
 Homepage = "https://github.com/Ammar2033/RailNet"
@@ -34,6 +35,12 @@ force-exclude = true
 # EXE002 fires only because the repo is developed on an exFAT volume that
 # cannot store the Unix executable bit; git tracks every file as 0644.
 ignore = ["EXE002"]
+
+[tool.ruff.lint.per-file-ignores]
+# Amaranth's DSL uses nested `with m.If(...)` / `with m.Case(...)` that must not
+# be merged, and re-exports test fns by name.
+"hardware/rtl/*" = ["SIM117"]
+"tests/hardware/*" = ["E402", "F401"]
 
 [tool.mypy]
 python_version = "3.10"

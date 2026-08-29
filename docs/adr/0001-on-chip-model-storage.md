@@ -83,10 +83,12 @@ compute side: the rail decomposition needs ~12× fewer hard multipliers
 NVM → denser than raw-weights-in-NVM + dense MACs, and reprogrammable unlike
 etched ROM.
 
-**Gate:** an RTL sketch of the stage-A routing/gather fabric for one small tile,
-verified against `railnet.verification`. If the routing fabric is not
-meaningfully cheaper than a dense MAC array → fall back to **C** (FPGA / software
-contribution).
+**Gate — provisionally PASSED.** `hardware/rtl/` (Amaranth, yosys-synthesised,
+functionally verified): with the G accumulator in a memory (not a register
+file — that is 41× a dense MAC), the stage-A gather is ~1.3× a dense MAC in LUT
+with **0 DSP**. Per output column ≈ 7× fewer DSPs for ≈ 5× more LUT. Follow-ups
+before it's unqualified: BF16 datapath, Fmax (P&R), route-id decode logic. If
+one of those kills it → fall back to **C**. See `hardware/research/stage_a_rtl.md`.
 
 **Parallel bet — train in the rail basis: probed, provisionally closed.**
 `research/train_rail_basis.py` (tiny char-LM): the rail basis trains to dense

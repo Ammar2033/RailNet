@@ -27,6 +27,7 @@ Last updated 2026-08-29.
 | add / total-op ratio | 2.5× / 1.30× | `compute_cost` |
 | weight-sized memory traffic | 1.0× | — |
 | FPGA datapath at matched throughput | **~12× fewer DSPs, ~2.4× more LUT** | `fpga` (analytical) |
+| stage-A gather, real synthesis (yosys) | **~7× fewer DSPs, ~5× more LUT**; gather ≈ 1.3× a dense MAC in LUT, **0 DSP** — *if G is in memory, not a register file* | `hardware/rtl/` |
 | train in rail basis — loss | matches dense (0.11 vs 0.12) | `train_rail_basis` |
 | train in rail basis — route-map compressibility | **none**, even with a hard 4-term budget + entropy + L1 (~90% of weights keep a unique route; 15/16 bits) | `train_rail_basis` |
 
@@ -40,8 +41,10 @@ must fit in a rewritable medium.
   compress — proven three ways. Trained transformer weights carry ~12 bits/weight
   of genuine entropy with no rail locality.
 - **Its only real lever is compute.** ~12× fewer hard multipliers → a small
-  compute tile → more die for storage. On a DSP-bound FPGA this is a genuine
-  advantage; on an ASIC it depends on the (unmodelled) routing fabric cost.
+  compute tile. The feared cost — the stage-A routing/gather fabric — **synthesised
+  cheap**: ~1.3× a dense MAC in LUT, 0 DSP, *provided the G accumulator is a
+  memory not a register file* (a register file is 41× — the wrong design). Net
+  per column ≈ 7× fewer DSPs for ≈ 5× more LUT.
 - **Total energy is ~neutral.** Inference is memory-bound; RailNet doesn't cut
   weight-sized memory traffic.
 
@@ -49,10 +52,12 @@ must fit in a rewritable medium.
 
 **Path B** — route-id map stored dense in on-chip rewritable NVM (ReRAM/MRAM);
 value is the small shared-rail compute tile.
-**Gate:** an RTL sketch of the stage-A routing/gather fabric for one small tile,
-verified against `railnet.verification`. Cheaper than a dense MAC array → the
-"reprogrammable weight-in-silicon" thesis holds. Not → fall back to **C** (FPGA /
-software contribution).
+**Gate: provisionally PASSES.** `hardware/rtl/` — Amaranth stage-A tiles,
+functionally verified vs a golden model, synthesised with yosys. The gather is
+~1.3× a dense MAC in LUT with 0 DSP (G in memory). Still unverified before the
+"provisionally" drops: BF16 datapath, Fmax (no P&R), route-id decode logic,
+stage-B amortisation. See `hardware/research/stage_a_rtl.md`. If a later check
+kills it → fall back to **C**.
 
 **Parallel bet — train in the rail basis: looking closed.** The rail basis
 trains to dense loss, but the route-map does not compress even with a hard
@@ -65,19 +70,22 @@ path is closed. RailNet's on-chip story is dense route-map in dense NVM.**
 
 ## Honest venture read
 
-- **ASIC venture:** not yet, and the current numbers make the thesis hard —
-  neutral on both memory footprint and energy/token. Needs the RTL gate to pass
-  **and** either a train-in-rail-basis breakthrough or a dense-NVM density path.
-- **FPGA niche:** legitimate — ~12× fewer DSPs for DSP-bound edge inference,
-  working software today.
-- **Research contribution:** strong and real now — a verified, HF-faithful exact
-  neural execution architecture with an honest analysis of when weight-in-silicon
-  helps.
+- **ASIC venture:** the RTL gate provisionally passed — the routing fabric is
+  cheap, so the "reprogrammable weight-in-silicon" thesis is *alive*. Still
+  neutral on model footprint and total energy/token; the pitch is small models,
+  reprogrammable, DSP-lean — a real but narrow segment (fleets serving many
+  models). Contingent on BF16/Fmax follow-ups.
+- **FPGA niche:** legitimate and now gate-backed — ~7× fewer DSPs (synthesised)
+  for DSP-bound edge inference, working software today.
+- **Research contribution:** strong and real — a verified, HF-faithful exact
+  neural execution architecture + an honest, measured analysis (and RTL) of when
+  weight-in-silicon helps.
 
 ## Next
 
-1. Stage-A routing-fabric RTL sketch (the gate).
-2. ReRAM/MRAM density + endurance scan.
-3. Serious train-in-rail-basis experiment: term-budget + route-sharing VQ, real
-   task, loss-vs-compression curve.
-4. Finish + verify the 182/182 compile; full `railnet cost` numbers.
+1. **BF16 datapath** for the tiles + re-synth (does the DSP ratio hold?).
+2. **Fmax** — nextpnr on ECP5 for the stage-A RMW pipeline.
+3. Full tile end-to-end (route-id BRAM → decode → 3× StageA → StageB), verified
+   against `railnet.verification` on a real compiled tensor.
+4. ReRAM/MRAM density + endurance scan.
+5. (lower priority) route-sharing-VQ train-in-rail-basis experiment.
