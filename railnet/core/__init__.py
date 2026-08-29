@@ -1,6 +1,6 @@
+from .graph import GraphNode, RailGraph
+from .model import RailModel
 from .shape import Shape
 from .tensor import RailTensor
-from .graph import RailGraph, GraphNode
-from .model import RailModel
 
-__all__ = ["Shape", "RailTensor", "RailGraph", "GraphNode", "RailModel"]
+__all__ = ["GraphNode", "RailGraph", "RailModel", "RailTensor", "Shape"]

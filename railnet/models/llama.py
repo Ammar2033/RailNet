@@ -1,5 +1,7 @@
 """Llama adapter — PLANNED."""
+
 from .base import ModelAdapter
+
 
 class LlamaAdapter(ModelAdapter):
     name = "llama"

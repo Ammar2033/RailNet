@@ -1,13 +1,14 @@
 """Unit tests for model adapters."""
+
 import pytest
 
-from railnet.models import get_adapter, ModelAdapter
-from railnet.models.gemma import GemmaAdapter, GEMMA_CONFIG
+from railnet.models import get_adapter
+from railnet.models.gemma import GemmaAdapter
 from railnet.models.llama import LlamaAdapter
 from railnet.models.qwen import QwenAdapter
 
-
 # ── Registry ──────────────────────────────────────────────
+
 
 class TestAdapterRegistry:
     def test_gemma_lookup(self):
@@ -33,6 +34,7 @@ class TestAdapterRegistry:
 
 # ── GemmaAdapter ──────────────────────────────────────────
 
+
 class TestGemmaAdapter:
     def test_properties(self):
         a = GemmaAdapter()
@@ -54,6 +56,7 @@ class TestGemmaAdapter:
 
 
 # ── LlamaAdapter ──────────────────────────────────────────
+
 
 class TestLlamaAdapter:
     def test_properties(self):
@@ -83,6 +86,7 @@ class TestLlamaAdapter:
 
 
 # ── QwenAdapter ───────────────────────────────────────────
+
 
 class TestQwenAdapter:
     def test_properties(self):

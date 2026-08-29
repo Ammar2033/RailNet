@@ -1,15 +1,15 @@
 """Unit tests for storage: MemoryBudget, route_map, honest_report."""
-import tempfile
+
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from railnet.storage.memory import MemoryBudget
-from railnet.storage.route_map import save_route_map, load_route_map, route_map_bytes, honest_report
-
+from railnet.storage.route_map import honest_report, load_route_map, route_map_bytes, save_route_map
 
 # ── MemoryBudget ──────────────────────────────────────────
+
 
 class TestMemoryBudget:
     def test_defaults(self):
@@ -45,6 +45,7 @@ class TestMemoryBudget:
 
 # ── Route Map ─────────────────────────────────────────────
 
+
 class TestRouteMap:
     def test_save_load_roundtrip(self, tmp_path):
         arr = np.array([0, 1, 2, 3, 0, 1], dtype=np.uint16)
@@ -69,6 +70,7 @@ class TestRouteMap:
 
 
 # ── Honest Report ─────────────────────────────────────────
+
 
 class TestHonestReport:
     def test_small_tensor(self):

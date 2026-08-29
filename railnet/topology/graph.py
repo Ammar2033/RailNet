@@ -5,6 +5,7 @@ Storage-efficient representation keeps only the unique-value
 dictionary; per-element route_ids are stored separately as
 .topology / route map file.
 """
+
 from __future__ import annotations
 
 import numpy as np

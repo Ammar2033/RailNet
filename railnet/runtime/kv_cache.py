@@ -3,9 +3,8 @@ KV cache — per-layer growing cache.
 
 Exact semantics verified in 14_gemma_multi_block.py
 """
-from __future__ import annotations
 
-import numpy as np
+from __future__ import annotations
 
 
 class KVCache:

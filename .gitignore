@@ -1,7 +1,30 @@
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
 .venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# RailNet artifacts / outputs
 compiled/
+results/
 *.npy
 *.rnmodel
-results/
+
+# Model weights (pulled via git-lfs / downloaded separately)
+model_data/*.safetensors
+
+# Logs / scratch
+*.log
+*.err
+scratch_*.py

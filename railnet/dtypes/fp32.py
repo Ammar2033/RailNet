@@ -1,4 +1,5 @@
 """FP32 dtype — architecture READY, compiler PLANNED."""
+
 from __future__ import annotations
 
 import struct

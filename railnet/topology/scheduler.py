@@ -7,13 +7,21 @@ Shared form:
 Scheduler precomputes (p_ii, p_idx, p_ss) to allow
 bincount-based shared multiply.
 """
+
 from __future__ import annotations
 
 import numpy as np
 
 
-def build_schedule(route_ids: np.ndarray, term_rail: np.ndarray, term_sign: np.ndarray,
-                   term_active: np.ndarray, in_features: int, out_features: int, rail_count: int):
+def build_schedule(
+    route_ids: np.ndarray,
+    term_rail: np.ndarray,
+    term_sign: np.ndarray,
+    term_active: np.ndarray,
+    in_features: int,
+    out_features: int,
+    rail_count: int,
+):
     n = route_ids.size
     ii = (np.arange(n) % in_features).astype(np.int32)
     jjR = ((np.arange(n) // in_features) * rail_count).astype(np.int64)

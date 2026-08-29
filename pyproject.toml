@@ -9,12 +9,16 @@ description = "RailNet — lossless topology-driven neural-network execution and
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
-dependencies = ["numpy", "pandas"]
+dependencies = ["numpy"]
 authors = [{ name = "RailNet Contributors" }]
 
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "mypy"]
+gemma = ["tokenizers"]
+
 [project.urls]
-Homepage = "https://github.com/railnet/railnet"
-Issues = "https://github.com/railnet/railnet/issues"
+Homepage = "https://github.com/Ammar2033/RailNet"
+Issues = "https://github.com/Ammar2033/RailNet/issues"
 
 [project.scripts]
 railnet = "railnet.cli:main"
@@ -22,9 +26,15 @@ railnet = "railnet.cli:main"
 [tool.ruff]
 line-length = 100
 
+[tool.ruff.lint]
+# EXE002 fires only because the repo is developed on an exFAT volume that
+# cannot store the Unix executable bit; git tracks every file as 0644.
+ignore = ["EXE002"]
+
 [tool.mypy]
 python_version = "3.10"
-warn_return_any = true
+# numpy call sites legitimately surface as Any; keep mypy for real errors only.
+warn_return_any = false
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

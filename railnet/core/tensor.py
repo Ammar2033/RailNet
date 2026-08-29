@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 import numpy as np
 
@@ -14,6 +13,7 @@ class RailTensor:
     Compiled tensor view (no dense weights).
     Holds rail basis bits + topology table + route_id map handle.
     """
+
     name: str
     shape: Shape
     dtype: str
@@ -36,5 +36,7 @@ class RailTensor:
             "rail_count": int(self.rail_count),
             "max_terms": int(self.max_terms),
             "rails": [int(b) for b in self.rails_bits],
-            "routes": {str(k): [[int(r), int(s)] for r, s in v] for k, v in sorted(self.routes.items())},
+            "routes": {
+                str(k): [[int(r), int(s)] for r, s in v] for k, v in sorted(self.routes.items())
+            },
         }

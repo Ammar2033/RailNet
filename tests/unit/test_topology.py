@@ -1,14 +1,15 @@
 """Unit tests for topology: Route, RouteTerm, TopologyGraph, build_schedule."""
+
 import numpy as np
 import pytest
 
-from railnet.topology.route import Route, RouteTerm
 from railnet.topology.graph import TopologyGraph
 from railnet.topology.polarity import polarity_matrix, validate_polarity
+from railnet.topology.route import Route, RouteTerm
 from railnet.topology.scheduler import build_schedule
 
-
 # ── RouteTerm ─────────────────────────────────────────────
+
 
 class TestRouteTerm:
     def test_valid_positive(self):
@@ -36,6 +37,7 @@ class TestRouteTerm:
 
 
 # ── Route ─────────────────────────────────────────────────
+
 
 class TestRoute:
     def test_from_tuple(self):
@@ -69,6 +71,7 @@ class TestRoute:
 
 
 # ── TopologyGraph ─────────────────────────────────────────
+
 
 class TestTopologyGraph:
     def _make_graph(self):
@@ -109,7 +112,7 @@ class TestTopologyGraph:
         d = g.to_serializable()
         assert isinstance(d, dict)
         # keys are string
-        assert all(isinstance(k, str) for k in d.keys())
+        assert all(isinstance(k, str) for k in d)
 
     def test_from_serializable(self):
         g = self._make_graph()
@@ -130,6 +133,7 @@ class TestTopologyGraph:
 
 
 # ── Polarity ──────────────────────────────────────────────
+
 
 class TestPolarity:
     def test_polarity_matrix(self):
@@ -152,6 +156,7 @@ class TestPolarity:
 
 # ── Scheduler ─────────────────────────────────────────────
 
+
 class TestBuildSchedule:
     def test_basic_schedule(self):
         # 4 elements, 2 terms, 2 rails, in=2, out=2
@@ -161,8 +166,13 @@ class TestBuildSchedule:
         term_active = np.array([[True, True], [True, True]])
 
         p_ii, p_idx, p_ss = build_schedule(
-            route_ids, term_rail, term_sign, term_active,
-            in_features=2, out_features=2, rail_count=2,
+            route_ids,
+            term_rail,
+            term_sign,
+            term_active,
+            in_features=2,
+            out_features=2,
+            rail_count=2,
         )
         assert len(p_ii) > 0
         assert len(p_ii) == len(p_idx) == len(p_ss)
@@ -173,8 +183,13 @@ class TestBuildSchedule:
         term_sign = np.array([[1]], dtype=np.int8)
         term_active = np.array([[False]])  # nothing active
 
-        p_ii, p_idx, p_ss = build_schedule(
-            route_ids, term_rail, term_sign, term_active,
-            in_features=1, out_features=1, rail_count=1,
+        p_ii, _p_idx, _p_ss = build_schedule(
+            route_ids,
+            term_rail,
+            term_sign,
+            term_active,
+            in_features=1,
+            out_features=1,
+            rail_count=1,
         )
         assert len(p_ii) == 0

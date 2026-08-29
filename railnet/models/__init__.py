@@ -3,7 +3,13 @@ from .gemma import GemmaAdapter
 from .llama import LlamaAdapter
 from .qwen import QwenAdapter
 
-ADAPTERS = {"gemma3": GemmaAdapter, "gemma": GemmaAdapter, "llama": LlamaAdapter, "qwen": QwenAdapter}
+ADAPTERS = {
+    "gemma3": GemmaAdapter,
+    "gemma": GemmaAdapter,
+    "llama": LlamaAdapter,
+    "qwen": QwenAdapter,
+}
+
 
 def get_adapter(name: str) -> ModelAdapter:
     key = name.lower()
@@ -11,4 +17,5 @@ def get_adapter(name: str) -> ModelAdapter:
         raise KeyError(f"Unknown model adapter '{name}'. Available: {list(ADAPTERS)}")
     return ADAPTERS[key]()
 
-__all__ = ["ModelAdapter", "GemmaAdapter", "LlamaAdapter", "QwenAdapter", "get_adapter"]
+
+__all__ = ["GemmaAdapter", "LlamaAdapter", "ModelAdapter", "QwenAdapter", "get_adapter"]

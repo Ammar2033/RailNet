@@ -1,9 +1,9 @@
 """Exactness tests — verify lossless tensor reconstruction."""
-import numpy as np
-import pytest
 
-from railnet.verification.exact import verify_tensor_exact, reconstruct_value
-from railnet.dtypes.bf16 import float32_to_bf16_bits, bf16_bits_to_float32
+import numpy as np
+
+from railnet.dtypes.bf16 import float32_to_bf16_bits
+from railnet.verification.exact import reconstruct_value, verify_tensor_exact
 
 
 class TestExactToyTensor:
@@ -22,8 +22,8 @@ class TestExactToyTensor:
         bits_neg = float32_to_bf16_bits(-0.5)
         rails = np.array([bits_pos], dtype=np.uint16)
         table = {
-            int(bits_pos): ((0, 1),),    # +R0
-            int(bits_neg): ((0, -1),),   # -R0
+            int(bits_pos): ((0, 1),),  # +R0
+            int(bits_neg): ((0, -1),),  # -R0
         }
         uniq = np.array([bits_pos, bits_neg], dtype=np.uint16)
         r = verify_tensor_exact(uniq, table, rails)
@@ -51,10 +51,10 @@ class TestExactToyTensor:
         bits_05 = float32_to_bf16_bits(0.5)
         bits_025 = float32_to_bf16_bits(0.25)
 
-        rails = np.array([bits_05, bits_025], dtype=np.uint16)
-        table = {
+        np.array([bits_05, bits_025], dtype=np.uint16)
+        {
             int(bits_05): ((0, 1),),
-            int(bits_025): ((0, 1), (1, -1)),   # R0 - R1 = 0.5 - 0.25 = 0.25 ✓
+            int(bits_025): ((0, 1), (1, -1)),  # R0 - R1 = 0.5 - 0.25 = 0.25 ✓
         }
         # Verify the reconstruction matches
         rails_f64 = np.array([0.5, 0.25], dtype=np.float64)

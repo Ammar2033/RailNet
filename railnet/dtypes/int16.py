@@ -1,4 +1,5 @@
 """INT16 dtype — READY."""
+
 from __future__ import annotations
 
 import numpy as np

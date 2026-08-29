@@ -1,6 +1,15 @@
 from .format import MAGIC, VERSION
-from .writer import write_rnmodel
+from .manifest import build_manifest, checksum_manifest, verify_checksum
 from .reader import read_rnmodel, verify_rnmodel
-from .manifest import build_manifest, checksum_manifest
+from .writer import write_rnmodel
 
-__all__ = ["MAGIC", "VERSION", "write_rnmodel", "read_rnmodel", "verify_rnmodel", "build_manifest", "checksum_manifest"]
+__all__ = [
+    "MAGIC",
+    "VERSION",
+    "build_manifest",
+    "checksum_manifest",
+    "read_rnmodel",
+    "verify_checksum",
+    "verify_rnmodel",
+    "write_rnmodel",
+]

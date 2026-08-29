@@ -1,20 +1,18 @@
 """Unit tests for artifact format, manifest, writer, reader."""
-import hashlib
+
 import json
 import struct
-import tempfile
 from pathlib import Path
 
 import numpy as np
-import pytest
 
-from railnet.artifacts.format import MAGIC, VERSION, ArtifactHeader, TensorRecord
+from railnet.artifacts.format import MAGIC, ArtifactHeader, TensorRecord
 from railnet.artifacts.manifest import build_manifest, checksum_manifest, save_manifest
-from railnet.artifacts.writer import write_rnmodel, write_manifest_json
-from railnet.artifacts.reader import read_rnmodel, verify_rnmodel
-
+from railnet.artifacts.reader import verify_rnmodel
+from railnet.artifacts.writer import write_manifest_json, write_rnmodel
 
 # ── ArtifactHeader ────────────────────────────────────────
+
 
 class TestArtifactHeader:
     def test_defaults(self):
@@ -30,6 +28,7 @@ class TestArtifactHeader:
 
 
 # ── TensorRecord ──────────────────────────────────────────
+
 
 class TestTensorRecord:
     def _make_record(self):
@@ -71,6 +70,7 @@ class TestTensorRecord:
 
 # ── Manifest ──────────────────────────────────────────────
 
+
 class TestManifest:
     def test_build_manifest(self):
         tensors = [{"name": "t1", "rails": 96}]
@@ -105,6 +105,7 @@ class TestManifest:
 
 
 # ── Writer / Reader roundtrip ─────────────────────────────
+
 
 class TestRnmodelRoundtrip:
     def test_write_basic(self, tmp_path):
@@ -145,6 +146,7 @@ class TestRnmodelRoundtrip:
 
 
 # ── write_manifest_json ───────────────────────────────────
+
 
 class TestWriteManifestJson:
     def test_write_and_read(self, tmp_path):

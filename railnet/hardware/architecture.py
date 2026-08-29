@@ -3,6 +3,7 @@ Hardware architecture — PCIe card model (PLANNED / RESEARCH).
 
 Not yet silicon; documents target organization.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

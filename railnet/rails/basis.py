@@ -8,6 +8,7 @@ Represents the shared fabric:
 Physical rail capacity is fixed (e.g. 96 or 128).
 Values are programmable per model artifact.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -22,7 +23,7 @@ class RailBasis:
         if isinstance(rails, np.ndarray):
             # uint16 bits array
             self.dtype_name = dtype
-            dt = get_dtype(dtype)
+            get_dtype(dtype)
             self.rails = [Rail.from_bits(i, dtype, int(b)) for i, b in enumerate(rails)]
             self.bits = rails.astype(np.uint16)
             self.values_f64 = np.array([r.decoded_value for r in self.rails], dtype=np.float64)
@@ -33,7 +34,7 @@ class RailBasis:
             self.values_f64 = np.array([r.decoded_value for r in self.rails], dtype=np.float64)
 
     @classmethod
-    def from_bits(cls, bits: np.ndarray, dtype: str = "bf16") -> "RailBasis":
+    def from_bits(cls, bits: np.ndarray, dtype: str = "bf16") -> RailBasis:
         return cls(bits, dtype=dtype)
 
     def __len__(self):
@@ -46,4 +47,8 @@ class RailBasis:
         return self.bits.copy()
 
     def to_dict(self) -> dict:
-        return {"dtype": self.dtype_name, "rail_count": len(self.rails), "rails": [r.to_dict() for r in self.rails]}
+        return {
+            "dtype": self.dtype_name,
+            "rail_count": len(self.rails),
+            "rails": [r.to_dict() for r in self.rails],
+        }

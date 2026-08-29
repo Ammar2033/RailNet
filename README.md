@@ -39,34 +39,46 @@ Gemma3 1B class (`hidden=1152, layers=26, vocab=262144, BF16`):
 ## Installation
 
 ```bash
-git clone <repo> && cd RailNet
-pip install -e .
+git clone https://github.com/Ammar2033/RailNet && cd RailNet
+pip install -e ".[dev]"          # + [gemma] for the tokenizer-backed demo
 ```
 
-Requires `model_data/model.safetensors` + `config.json` for Gemma reproduction (not bundled).
+Reproducing the Gemma path needs `model_data/model.safetensors` + `config.json`
++ `tokenizer.json` (not bundled). The test suite proves the full pipeline on a
+synthetic model and needs none of that.
 
 ## Quick Demo
 
 ```bash
-python examples/gemma3_demo.py
-railnet inspect model_data/model.safetensors --model gemma3
-railnet compile model_data/model.safetensors --dtype bf16 --rails 96 --terms 4
-railnet verify compiled/manifest.json
-railnet generate compiled --prompt "Hello" --max-tokens 32
+railnet inspect  model_data/model.safetensors --model gemma3
+railnet compile  model_data/model.safetensors --dtype bf16 --rails 96 --terms 4 --out compiled
+railnet verify   compiled/manifest.json
+railnet generate compiled --prompt "Hello" --max-tokens 32     # needs [gemma] + tokenizer.json
 ```
+
+`compile` is exhaustive and slow on a 1B model — use `--only` / `--limit` to
+compile a subset while iterating.
 
 Python:
 
 ```python
+from railnet.compiler.model import compile_model
+from railnet.runtime import RailNetModel
+
+compile_model("model_data/model.safetensors", out_dir="compiled", rails=96, max_terms=4)
+
+model = RailNetModel.load("compiled")
+logits = model.forward([2, 133, 40])              # final-token logits, no dense weights
+out = model.generate("Merhaba", max_new_tokens=64)
+```
+
+Single tensor:
+
+```python
 from railnet.compiler import RailNetCompiler
-from railnet.runtime import RailNetDevice
 
 compiler = RailNetCompiler(model="gemma3")
-artifact = compiler.compile_tensor(raw_bits, dtype="bf16", rails=96, max_terms=4)
-
-device = RailNetDevice.cpu()
-model = device.load_model("compiled")
-out = model.generate("Merhaba", max_new_tokens=64)
+tensor = compiler.compile_tensor(raw_bits, dtype="bf16", rails=96, max_terms=4)
 ```
 
 ## Architecture

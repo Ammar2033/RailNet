@@ -1,9 +1,10 @@
 """Exact verification primitives."""
+
 from __future__ import annotations
 
 import numpy as np
 
-from railnet.dtypes.bf16 import bf16_bits_to_float32, bf16_array_to_float32, float32_to_bf16_bits
+from railnet.dtypes.bf16 import bf16_array_to_float32, float32_to_bf16_bits
 
 
 def exact_equal_bits(a: int, b: int) -> bool:
@@ -31,4 +32,9 @@ def verify_tensor_exact(bits_unique: np.ndarray, table: dict, rails_bits: np.nda
             fails.append(int(b))
         else:
             ok += 1
-    return {"exact": ok, "total": len(bits_unique), "lossless": ok == len(bits_unique), "fails": fails}
+    return {
+        "exact": ok,
+        "total": len(bits_unique),
+        "lossless": ok == len(bits_unique),
+        "fails": fails,
+    }

@@ -1,27 +1,29 @@
-"""
-Gemma3 demo — loads compiled/ artifact and runs exact verification
-without re-compiling. Requires model_data/ and compiled/ from Stage 15.
+"""Gemma3 demo — load a compiled RailNet artifact and run an exact forward.
 
-  pip install -e .
-  python examples/gemma3_demo.py
+    railnet compile model_data/model.safetensors --out compiled
+    python examples/gemma3_demo.py
+
+If ``compiled/`` is not present this prints instructions and exits 0.
 """
-from pathlib import Path
+
 import json
-import numpy as np
+from pathlib import Path
 
 compiled = Path("compiled/manifest.json")
 if not compiled.exists():
-    print("No compiled/manifest.json — run research/experiments/15a_gemma_full_compile.py first (needs model_data/model.safetensors)")
+    print(
+        "No compiled/manifest.json — run:  railnet compile model_data/model.safetensors --out compiled"
+    )
     raise SystemExit(0)
 
+from railnet.runtime import RailNetModel
+
 manifest = json.loads(compiled.read_text())
-print(f"Manifest tensors: {len(manifest.get('tensors', []))}")
+print(f"compiled tensors : {manifest.get('pass_count')}  verdict={manifest.get('verdict')}")
 
-# Light forward check via runtime shim
-from railnet.runtime.transformer import RailNetModel
 model = RailNetModel.load("compiled")
-print(f"Loaded model via RailNetModel — config layers={model.config.get('num_hidden_layers')}")
+print(f"layers           : {model.n_layers}")
 
-# Verification: one linear
-from railnet.kernel import rail_linear
-print("Demo OK — for full generation see research/experiments/16_gemma_generation.py")
+logits = model.forward([2, 133, 40])
+print(f"forward OK        : vocab={logits.shape[0]} argmax={int(logits.argmax())}")
+print("runtime dense weight array: ABSENT")

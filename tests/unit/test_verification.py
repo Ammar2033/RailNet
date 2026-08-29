@@ -1,13 +1,14 @@
 """Unit tests for verification module."""
+
 import numpy as np
 import pytest
 
+from railnet.dtypes.bf16 import float32_to_bf16_bits
 from railnet.verification.exact import exact_equal_bits, reconstruct_value, verify_tensor_exact
 from railnet.verification.generation import verify_logits
-from railnet.dtypes.bf16 import bf16_bits_to_float32, float32_to_bf16_bits
-
 
 # ── exact_equal_bits ──────────────────────────────────────
+
 
 class TestExactEqualBits:
     def test_equal(self):
@@ -21,6 +22,7 @@ class TestExactEqualBits:
 
 
 # ── reconstruct_value ─────────────────────────────────────
+
 
 class TestReconstructValue:
     def test_single_positive(self):
@@ -45,6 +47,7 @@ class TestReconstructValue:
 
 
 # ── verify_tensor_exact ───────────────────────────────────
+
 
 class TestVerifyTensorExact:
     def test_lossless(self):
@@ -88,6 +91,7 @@ class TestVerifyTensorExact:
 
 
 # ── verify_logits ─────────────────────────────────────────
+
 
 class TestVerifyLogits:
     def test_identical(self):

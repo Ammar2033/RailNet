@@ -27,19 +27,37 @@ rails = compiled_tensor.rails
 routes = compiled_tensor.route_ids
 ```
 
-## Running the Exactness Tests
+## Compiling a whole model
 
-To reproduce our claims of absolute bit-level exactness without rounding degradation, run the test suite:
+```python
+from railnet.compiler.model import compile_model
 
-```bash
-python -m pytest tests/exactness/test_exact_tensor.py -v
+compile_model("model_data/model.safetensors", out_dir="compiled", rails=96, max_terms=4)
 ```
 
-This test will:
-1. Generate random dense matrices.
-2. Compile them into a RailNet representation.
-3. Perform sparse accumulation based on the route map.
-4. Verify that the bits resulting from the accumulation identically match the bits of the original dense matrix.
+This writes `compiled/manifest.json` plus per-layer rail tables and route-id
+maps. `--only` / `--limit` (CLI) or the same kwargs (Python) restrict the run
+to a subset while iterating; `max_iters` caps the basis-learning loop.
+
+## Running the runtime
+
+```python
+from railnet.runtime import RailNetModel
+
+model = RailNetModel.load("compiled")
+logits = model.forward([2, 133, 40])   # exact forward, no dense weight array
+```
+
+## Running the Exactness Tests
+
+```bash
+python -m pytest tests/exactness/ -v
+```
+
+`test_exact_tensor.py` checks weight-reconstruction exactness on random
+matrices. `test_end_to_end_runtime.py` builds a synthetic Gemma-shaped model,
+compiles every linear, and asserts the RailNet logits are BF16-bitwise equal
+to a dense reference sharing the same transformer ops.
 
 ## Running the Experiments
 

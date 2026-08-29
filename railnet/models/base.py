@@ -1,4 +1,5 @@
 """ModelAdapter base — model-specific compile/runtime hooks."""
+
 from __future__ import annotations
 
 import abc
@@ -10,17 +11,13 @@ class ModelAdapter(abc.ABC):
     architecture: str = "generic"
 
     @abc.abstractmethod
-    def inspect(self, safetensors_path: str) -> dict:
-        ...
+    def inspect(self, safetensors_path: str) -> dict: ...
 
     @abc.abstractmethod
-    def compile_tensor(self, raw, tensor_name: str, **kwargs) -> dict:
-        ...
+    def compile_tensor(self, raw, tensor_name: str, **kwargs) -> dict: ...
 
     @abc.abstractmethod
-    def build_graph(self) -> dict:
-        ...
+    def build_graph(self) -> dict: ...
 
     @abc.abstractmethod
-    def build_runtime(self, compiled_dir: str, device=None):
-        ...
+    def build_runtime(self, compiled_dir: str, device=None): ...

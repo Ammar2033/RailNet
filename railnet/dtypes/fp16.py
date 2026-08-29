@@ -1,4 +1,5 @@
 """FP16 dtype — architecture READY, compiler TODO."""
+
 from __future__ import annotations
 
 import numpy as np

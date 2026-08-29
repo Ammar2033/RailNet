@@ -1,12 +1,13 @@
 """Unit tests for Rail, RailBasis, and rails module."""
+
 import numpy as np
 import pytest
 
-from railnet.rails.rail import Rail
 from railnet.rails.basis import RailBasis
-
+from railnet.rails.rail import Rail
 
 # ── Rail ──────────────────────────────────────────────────
+
 
 class TestRail:
     def test_from_value_bf16(self):
@@ -63,6 +64,7 @@ class TestRail:
 
 
 # ── RailBasis ─────────────────────────────────────────────
+
 
 class TestRailBasis:
     def test_from_bits(self):

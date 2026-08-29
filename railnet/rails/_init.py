@@ -1,18 +1,13 @@
 import numpy as np
-import math
+
 from railnet.dtypes.bf16 import (
-    bf16_bits_to_float32, bf16_array_to_float32, 
-    float32_to_bf16_bits, fp32_array_to_bf16_bits, bf16_bitwise_equal
+    float32_to_bf16_bits,
 )
 
 EXTREME_RAIL_SLOTS = 0
 
-def initialize_rails(
-    values_float,
-    target_bits,
-    counts,
-    rail_count
-):
+
+def initialize_rails(values_float, target_bits, counts, rail_count):
     """
     Weighted 1D k-means-like initialization.
 
@@ -29,28 +24,14 @@ def initialize_rails(
     """
 
     if rail_count >= len(values_float):
-
         selected = target_bits.copy()
 
         if len(selected) < rail_count:
+            padding = np.zeros(rail_count - len(selected), dtype=np.uint16)
 
-            padding = np.zeros(
-                rail_count - len(
-                    selected
-                ),
-                dtype=np.uint16
-            )
+            selected = np.concatenate([selected, padding])
 
-            selected = np.concatenate(
-                [
-                    selected,
-                    padding
-                ]
-            )
-
-        return selected[
-            :rail_count
-        ]
+        return selected[:rail_count]
 
     # --------------------------------------------------------
     # Uniform quantile initialization.
@@ -66,46 +47,21 @@ def initialize_rails(
     # optimization. This is a hardened fix.
     # --------------------------------------------------------
 
-    order = np.argsort(
-        values_float
-    )
+    order = np.argsort(values_float)
 
-    sorted_values = (
-        values_float[
-            order
-        ]
-    )
+    sorted_values = values_float[order]
 
     centers = []
 
-    for i in range(
-        rail_count
-    ):
-
+    for i in range(rail_count):
         # Uniform index across sorted unique values
-        idx = int(
-            (i + 0.5)
-            / rail_count
-            * len(sorted_values)
-        )
+        idx = int((i + 0.5) / rail_count * len(sorted_values))
 
-        idx = min(
-            idx,
-            len(sorted_values) - 1
-        )
+        idx = min(idx, len(sorted_values) - 1)
 
-        centers.append(
-            float(
-                sorted_values[
-                    idx
-                ]
-            )
-        )
+        centers.append(float(sorted_values[idx]))
 
-    centers = np.asarray(
-        centers,
-        dtype=np.float64
-    )
+    centers = np.asarray(centers, dtype=np.float64)
 
     # --------------------------------------------------------
     # Optional light weighted refinement (1 iteration)
@@ -120,23 +76,13 @@ def initialize_rails(
     # Convert every center to BF16.
     # --------------------------------------------------------
 
-    rails = np.array(
-        [
-            float32_to_bf16_bits(
-                center
-            )
-            for center in centers
-        ],
-        dtype=np.uint16
-    )
+    rails = np.array([float32_to_bf16_bits(center) for center in centers], dtype=np.uint16)
 
     # --------------------------------------------------------
     # Remove duplicate BF16 rails.
     # --------------------------------------------------------
 
-    rails = np.unique(
-        rails
-    )
+    rails = np.unique(rails)
 
     # --------------------------------------------------------
     # Need exactly rail_count slots.
@@ -144,61 +90,29 @@ def initialize_rails(
     # --------------------------------------------------------
 
     if len(rails) < rail_count:
+        frequency_order = np.argsort(counts)[::-1]
 
-        frequency_order = np.argsort(
-            counts
-        )[::-1]
-
-        used = set(
-            int(x)
-            for x in rails
-        )
+        used = {int(x) for x in rails}
 
         additions = []
 
         for index in frequency_order:
-
-            candidate = int(
-                target_bits[
-                    index
-                ]
-            )
+            candidate = int(target_bits[index])
 
             if candidate in used:
                 continue
 
-            used.add(
-                candidate
-            )
+            used.add(candidate)
 
-            additions.append(
-                candidate
-            )
+            additions.append(candidate)
 
-            if (
-                len(rails)
-                +
-                len(additions)
-                >= rail_count
-            ):
-
+            if len(rails) + len(additions) >= rail_count:
                 break
 
         if additions:
+            rails = np.concatenate([rails, np.array(additions, dtype=np.uint16)])
 
-            rails = np.concatenate(
-                [
-                    rails,
-                    np.array(
-                        additions,
-                        dtype=np.uint16
-                    )
-                ]
-            )
-
-    rails = rails[
-        :rail_count
-    ]
+    rails = rails[:rail_count]
 
     # --------------------------------------------------------
     # Extreme tail rails.
@@ -211,51 +125,31 @@ def initialize_rails(
     # --------------------------------------------------------
 
     if EXTREME_RAIL_SLOTS > 0 and rail_count >= 4:
-
-        order_by_value = np.argsort(
-            values_float
-        )
+        order_by_value = np.argsort(values_float)
 
         extreme_bits = []
 
-        seen = set(
-            int(x)
-            for x in rails
-        )
+        seen = {int(x) for x in rails}
 
         for k in range(EXTREME_RAIL_SLOTS):
+            low_index = int(order_by_value[k])
 
-            low_index = int(
-                order_by_value[k]
-            )
-
-            bits_low = int(
-                target_bits[low_index]
-            )
+            bits_low = int(target_bits[low_index])
 
             if bits_low not in seen:
                 extreme_bits.append(bits_low)
                 seen.add(bits_low)
 
-            high_index = int(
-                order_by_value[-1 - k]
-            )
+            high_index = int(order_by_value[-1 - k])
 
-            bits_high = int(
-                target_bits[high_index]
-            )
+            bits_high = int(target_bits[high_index])
 
             if bits_high not in seen:
                 extreme_bits.append(bits_high)
                 seen.add(bits_high)
 
-        for slot, bits_extreme in enumerate(
-            extreme_bits
-        ):
-
-            rails[slot] = np.uint16(
-                bits_extreme
-            )
+        for slot, bits_extreme in enumerate(extreme_bits):
+            rails[slot] = np.uint16(bits_extreme)
 
     return rails
 
@@ -263,5 +157,3 @@ def initialize_rails(
 # ============================================================
 # FAST GREEDY ROUTING
 # ============================================================
-
-

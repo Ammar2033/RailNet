@@ -1,11 +1,12 @@
 """Unit tests for core module: Shape, RailTensor, RailGraph, RailModel."""
+
 import numpy as np
 import pytest
 
-from railnet.core import Shape, RailTensor, RailGraph, GraphNode, RailModel
-
+from railnet.core import GraphNode, RailGraph, RailModel, RailTensor, Shape
 
 # ── Shape ─────────────────────────────────────────────────
+
 
 class TestShape:
     def test_basic(self):
@@ -47,6 +48,7 @@ class TestShape:
 
 
 # ── RailTensor ────────────────────────────────────────────
+
 
 class TestRailTensor:
     def _make_tensor(self):
@@ -97,6 +99,7 @@ class TestRailTensor:
 
 # ── RailGraph ─────────────────────────────────────────────
 
+
 class TestRailGraph:
     def test_add_node(self):
         g = RailGraph()
@@ -122,6 +125,7 @@ class TestRailGraph:
 
 # ── RailModel ─────────────────────────────────────────────
 
+
 class TestRailModel:
     def test_basic(self):
         m = RailModel(name="test", architecture="gemma3", dtype="bf16")
@@ -131,8 +135,11 @@ class TestRailModel:
     def test_add_tensor(self):
         m = RailModel(name="test", architecture="gemma3", dtype="bf16")
         t = RailTensor(
-            name="w1", shape=Shape((4, 3)), dtype="bf16",
-            rail_count=2, max_terms=2,
+            name="w1",
+            shape=Shape((4, 3)),
+            dtype="bf16",
+            rail_count=2,
+            max_terms=2,
             rails_bits=np.array([0x3F80], dtype=np.uint16),
             routes={},
         )
@@ -143,8 +150,11 @@ class TestRailModel:
     def test_to_manifest(self):
         m = RailModel(name="test", architecture="gemma3", dtype="bf16")
         t = RailTensor(
-            name="w1", shape=Shape((4, 3)), dtype="bf16",
-            rail_count=2, max_terms=2,
+            name="w1",
+            shape=Shape((4, 3)),
+            dtype="bf16",
+            rail_count=2,
+            max_terms=2,
             rails_bits=np.array([0x3F80], dtype=np.uint16),
             routes={},
         )

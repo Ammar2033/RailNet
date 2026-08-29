@@ -1,5 +1,5 @@
 from .engine import RailNetDevice, RailNetEngine
-from .transformer import RailNetModel
 from .kv_cache import KVCache
+from .transformer import RailNetModel
 
-__all__ = ["RailNetDevice", "RailNetEngine", "RailNetModel", "KVCache"]
+__all__ = ["KVCache", "RailNetDevice", "RailNetEngine", "RailNetModel"]

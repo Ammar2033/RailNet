@@ -4,7 +4,10 @@ All semantics verified against official HF modeling_gemma3.py
 and local config.json (Stage 13). Non-linear ops are the SAME
 functions for both paths; only the linear backend differs.
 """
+
 import numpy as np
+
+
 class GemmaContext:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -26,7 +29,7 @@ def rms_norm(x, w, ctx: GemmaContext):
 def rotate_half(x):
     d = x.shape[-1]
     x1 = x[..., : d // 2]
-    x2 = x[..., d // 2:]
+    x2 = x[..., d // 2 :]
     return np.concatenate([-x2, x1], axis=-1)
 
 
@@ -41,7 +44,7 @@ def rope_cos_sin(positions, ctx: GemmaContext):
 
 def gelu_tanh(x):
     c = np.sqrt(2.0 / np.pi)
-    return 0.5 * x * (1.0 + np.tanh(c * (x + 0.044715 * x ** 3)))
+    return 0.5 * x * (1.0 + np.tanh(c * (x + 0.044715 * x**3)))
 
 
 def softmax_last(x):
@@ -51,10 +54,10 @@ def softmax_last(x):
 
 def block_forward(
     h,
-    norms,          # dict of the 6 norm vectors for a layer
-    lin,            # callable(short_name, x2d) -> y2d
+    norms,  # dict of the 6 norm vectors for a layer
+    lin,  # callable(short_name, x2d) -> y2d
     ctx: GemmaContext,
-    cache=None,     # per-block KV cache dict or None
+    cache=None,  # per-block KV cache dict or None
     pos_offset=0,
 ):
     """

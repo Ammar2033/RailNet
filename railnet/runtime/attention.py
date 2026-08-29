@@ -1,4 +1,9 @@
-"""Attention runtime — uses transformer attention_block semantics."""
-from railnet.transformer import attention_block, rope_cos_sin, rms_norm
+"""Attention runtime — re-exports the shared transformer ops.
 
-__all__ = ["attention_block", "rope_cos_sin", "rms_norm"]
+Attention itself lives inside :func:`railnet.transformer.block_forward`;
+there is no standalone ``attention_block``.
+"""
+
+from railnet.transformer import block_forward, rms_norm, rope_cos_sin, softmax_last
+
+__all__ = ["block_forward", "rms_norm", "rope_cos_sin", "softmax_last"]

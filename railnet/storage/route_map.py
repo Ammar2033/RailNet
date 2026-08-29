@@ -1,4 +1,5 @@
 """Route map storage — honest accounting."""
+
 from __future__ import annotations
 
 from pathlib import Path

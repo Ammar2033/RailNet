@@ -1,14 +1,19 @@
 """Unit tests for hardware architecture models."""
+
+import numpy as np
 import pytest
 
-from railnet.hardware.architecture import RailNetCard, RailFabric, RoutingFabric, ComputeFabric, MemorySubsystem
+from railnet.hardware.architecture import (
+    RailFabric,
+    RailNetCard,
+    RoutingFabric,
+)
 from railnet.hardware.pci import PCIeDevice, PCIeLink
 from railnet.hardware.rail_array import RailArray
 from railnet.hardware.router import Router
-import numpy as np
-
 
 # ── RailFabric ────────────────────────────────────────────
+
 
 class TestRailFabric:
     def test_defaults(self):
@@ -24,6 +29,7 @@ class TestRailFabric:
 
 # ── RoutingFabric ─────────────────────────────────────────
 
+
 class TestRoutingFabric:
     def test_defaults(self):
         r = RoutingFabric()
@@ -32,6 +38,7 @@ class TestRoutingFabric:
 
 
 # ── RailNetCard ───────────────────────────────────────────
+
 
 class TestRailNetCard:
     def test_to_dict(self):
@@ -43,6 +50,7 @@ class TestRailNetCard:
 
 
 # ── PCIeDevice ────────────────────────────────────────────
+
 
 class TestPCIeDevice:
     def test_creation(self):
@@ -70,6 +78,7 @@ class TestPCIeDevice:
 
 # ── RailArray ─────────────────────────────────────────────
 
+
 class TestRailArray:
     def test_creation(self):
         ra = RailArray(count=96)
@@ -94,6 +103,7 @@ class TestRailArray:
 
 
 # ── Router ────────────────────────────────────────────────
+
 
 class TestRouter:
     def test_creation(self):

@@ -11,18 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Hardware Abstraction Layer (`railnet.hardware`)**: Implemented software emulations of routing and compute fabrics to simulate physical spatial constraints of a theoretical ASIC/FPGA design.
 - **Model Adapter Registry (`railnet.models`)**: Expandable adapter architecture for handling different model families (Gemma, LLaMA, Qwen).
 - **Core Abstractions (`railnet.core`)**: Formal `RailTensor` and `RailGraph` classes to act as primary memory and representation data structures.
-- **Exactness Tests (`railnet.verification`)**: 196 test cases validating compilation determinism, routing correctness, and bit-level fraction math equality.
+- **Exactness Tests (`railnet.verification`)**: test suite validating compilation determinism, routing correctness, and bit-level math equality.
+- **Bulk model compiler (`railnet.compiler.model.compile_model`)**: compiles every dense linear of a safetensors model into a RailNet artifact directory (`manifest.json` + per-layer rail tables + route-id maps).
+- **Working CPU runtime (`railnet.runtime.RailNetModel`)**: `forward()` / `generate()` now execute a real exact forward through the rail kernel — no dense weight array — with norms + tied embedding streamed from the source safetensors. Covered by `tests/exactness/test_end_to_end_runtime.py` (synthetic model, BF16-bitwise logit equality vs a dense reference).
 - **Expanded Documentation**: New guides detailing exactly how memory compression (`MEMORY.md`), hardware mapping (`HARDWARE.md`), and mathematical exactness (`EXACTNESS.md`) behave.
 
 ### Changed
 - **Compiler Rewrite (`railnet.compiler`)**: Re-architected compiler to produce type-safe `RailTensor` artifacts rather than raw unstructured dictionaries.
 - **Dtype Management (`railnet.dtypes`)**: Moved hardcoded type comparisons into a robust registry-based generic DType wrapper.
-- **Project Structure (`railnet.rails`)**: The monolithic 3.5k-line prototype compiler (`04_bf16_learned_basis.py`) was fully extracted, chunked, and moved into formal submodule structures (`_analysis.py`, `_compile.py`, `_repair.py`, `_optimize.py`).
-- **Runtime Modularity (`railnet.runtime`)**: Eradicated all `importlib.util` dynamic imports that were polluting package paths. Runtime modules now cleanly leverage dependency injection and explicit contexts (e.g., `GemmaContext`).
+- **Project Structure (`railnet.rails`)**: The monolithic prototype compiler was extracted into formal submodules (`_analysis.py`, `_compile.py`, `_repair.py`, `_optimize.py`), reformatted with `ruff format`, and the tree is now clean under `ruff check` and `mypy`.
+- **Runtime Modularity (`railnet.runtime`)**: Removed the remaining `importlib.util` dynamic-import shims (`runtime/linear.py`, `runtime/generation.py`, `compiler/model.py`); modules now use plain imports and explicit `GemmaContext`.
+
+### Fixed
+- `railnet verify <manifest.json>` crashed with `ModuleNotFoundError: railnet.artifact`; added `railnet.artifacts.verify_checksum`.
+- `railnet.validation` and `railnet.runtime.attention` raised `ImportError` on import (stale module paths).
+- `NameError: REPAIR_COMPILE_BUDGET` in `railnet.rails._repair`; missing `numpy` import in `railnet.rails.learner`.
+- `EmbeddingMMap` leaked the backing file descriptor on `close()`.
 
 ### Removed
-- Legacy root-level monolith modules (`compiler.py`, `bf16.py`, `basis.py`, `topology.py`, `artifact.py`, `mlp.py`) which were superseded by the internal `railnet/` package.
-- All loose root experimental logs (`.log`, `.json`, `.csv`) which are now cleanly organized into `results/data/`.
+- Legacy root-level monolith modules superseded by the internal `railnet/` package.
+- Duplicate root-level copies of the `research/experiments/` scripts and loose scratch/log files.
 
 ## [0.1.0] - 2026-08-25
 ### Added

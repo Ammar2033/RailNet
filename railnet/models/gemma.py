@@ -1,13 +1,13 @@
 """Gemma adapter — PROVEN on Gemma3 1B."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from .base import ModelAdapter
 from railnet.compiler import RailNetCompiler
-from railnet.dtypes import get_dtype
 
+from .base import ModelAdapter
 
 GEMMA_CONFIG = {
     "hidden_size": 1152,
@@ -37,7 +37,8 @@ class GemmaAdapter(ModelAdapter):
 
     def inspect(self, safetensors_path: str) -> dict:
         from railnet.safetensors_reader import read_header
-        hdr, base = read_header(safetensors_path)
+
+        hdr, _base = read_header(safetensors_path)
         return {"tensors": list(hdr.keys())[:10], "total": len(hdr), "config": self.config}
 
     def compile_tensor(self, raw, tensor_name: str, **kwargs):
@@ -50,4 +51,5 @@ class GemmaAdapter(ModelAdapter):
 
     def build_runtime(self, compiled_dir: str, device=None):
         from railnet.runtime.transformer import RailNetModel
+
         return RailNetModel.load(compiled_dir, device=device)

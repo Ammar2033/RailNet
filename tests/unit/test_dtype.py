@@ -1,24 +1,25 @@
 """Comprehensive dtype unit tests — all registered types."""
-import struct
 
 import numpy as np
 import pytest
 
 from railnet.dtypes import get_dtype, registered_dtypes
-from railnet.dtypes.base import RailDType, DTypeInfo
+from railnet.dtypes.base import DTypeInfo, RailDType
 from railnet.dtypes.bf16 import (
-    BF16, BF16DType,
-    bf16_bits_to_float32, bf16_array_to_float32,
-    float32_to_bf16_bits, fp32_array_to_bf16_bits,
+    BF16,
+    bf16_array_to_float32,
+    bf16_bits_to_float32,
+    float32_to_bf16_bits,
+    fp32_array_to_bf16_bits,
 )
 from railnet.dtypes.fp16 import FP16
 from railnet.dtypes.fp32 import FP32
+from railnet.dtypes.int4 import INT4
 from railnet.dtypes.int8 import INT8
 from railnet.dtypes.int16 import INT16
-from railnet.dtypes.int4 import INT4
-
 
 # ── Registry ──────────────────────────────────────────────
+
 
 class TestRegistry:
     def test_all_dtypes_registered(self):
@@ -44,6 +45,7 @@ class TestRegistry:
 
 
 # ── BF16 ──────────────────────────────────────────────────
+
 
 class TestBF16:
     def test_info(self):
@@ -111,6 +113,7 @@ class TestBF16Helpers:
 
 # ── FP16 ──────────────────────────────────────────────────
 
+
 class TestFP16:
     def test_info(self):
         assert FP16.name == "fp16"
@@ -133,6 +136,7 @@ class TestFP16:
 
 # ── FP32 ──────────────────────────────────────────────────
 
+
 class TestFP32:
     def test_info(self):
         assert FP32.name == "fp32"
@@ -152,6 +156,7 @@ class TestFP32:
 
 # ── INT8 ──────────────────────────────────────────────────
 
+
 class TestINT8:
     def test_info(self):
         assert INT8.name == "int8"
@@ -170,6 +175,7 @@ class TestINT8:
 
 # ── INT16 ─────────────────────────────────────────────────
 
+
 class TestINT16:
     def test_info(self):
         assert INT16.name == "int16"
@@ -182,6 +188,7 @@ class TestINT16:
 
 
 # ── INT4 ──────────────────────────────────────────────────
+
 
 class TestINT4:
     def test_info(self):
@@ -201,6 +208,7 @@ class TestINT4:
 
 
 # ── exact_equal_array (fixed) ─────────────────────────────
+
 
 class TestExactEqualArray:
     def test_bf16_uint16_view(self):
@@ -233,6 +241,7 @@ class TestExactEqualArray:
 
 # ── encode_array / decode_array ───────────────────────────
 
+
 class TestArrayEncodeDecode:
     def test_bf16_encode_array(self):
         values = np.array([0.0, 1.0, -1.0], dtype=np.float32)
@@ -250,6 +259,7 @@ class TestArrayEncodeDecode:
 
 
 # ── repr ──────────────────────────────────────────────────
+
 
 class TestRepr:
     def test_repr_format(self):

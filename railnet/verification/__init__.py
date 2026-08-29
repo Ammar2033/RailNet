@@ -1,4 +1,4 @@
-from .exact import verify_tensor_exact, reconstruct_value
+from .exact import reconstruct_value, verify_tensor_exact
 from .generation import verify_logits
 
-__all__ = ["verify_tensor_exact", "reconstruct_value", "verify_logits"]
+__all__ = ["reconstruct_value", "verify_logits", "verify_tensor_exact"]

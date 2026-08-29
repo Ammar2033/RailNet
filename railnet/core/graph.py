@@ -16,6 +16,7 @@ class RailGraph:
     """
     Model-level topology graph: nodes are compiled tensors + ops.
     """
+
     nodes: dict[str, GraphNode] = field(default_factory=dict)
     edges: list[tuple[str, str]] = field(default_factory=list)
 
@@ -26,4 +27,9 @@ class RailGraph:
         self.edges.append((src, dst))
 
     def to_dict(self) -> dict:
-        return {"nodes": {k: {"op": v.op, "inputs": v.inputs, "attrs": v.attrs} for k, v in self.nodes.items()}, "edges": self.edges}
+        return {
+            "nodes": {
+                k: {"op": v.op, "inputs": v.inputs, "attrs": v.attrs} for k, v in self.nodes.items()
+            },
+            "edges": self.edges,
+        }

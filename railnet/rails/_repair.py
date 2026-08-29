@@ -1,23 +1,14 @@
 import numpy as np
-import math
-from railnet.dtypes.bf16 import (
-    bf16_bits_to_float32, bf16_array_to_float32, 
-    float32_to_bf16_bits, fp32_array_to_bf16_bits, bf16_bitwise_equal
-)
 
 from ._compile import compile_exact_routes_exhaustive
+
 SAFE_SCAN_MAX_MISSING = 48
 SAFE_SCAN_LIMIT = 160
 RESIDUAL_CANDIDATES = 64
+REPAIR_COMPILE_BUDGET = 96
 
-def repair_missing_values(
-    target_values,
-    target_bits,
-    counts,
-    rails,
-    max_terms,
-    verbose=False
-):
+
+def repair_missing_values(target_values, target_bits, counts, rails, max_terms, verbose=False):
     """
     Targeted post-learning repair.
 
@@ -40,13 +31,7 @@ def repair_missing_values(
     total = len(target_bits)
 
     def compile_count(r):
-        table = (
-            compile_exact_routes_exhaustive(
-                target_bits,
-                r,
-                max_terms
-            )
-        )
+        table = compile_exact_routes_exhaustive(target_bits, r, max_terms)
         c = 0
         for b in target_bits:
             if int(b) in table:
@@ -66,10 +51,7 @@ def repair_missing_values(
     # --------------------------------------------------------
 
     def usage_histogram(table):
-        usage = np.zeros(
-            len(rails),
-            dtype=np.int64
-        )
+        usage = np.zeros(len(rails), dtype=np.int64)
         for route in table.values():
             for rid, _sign in route:
                 usage[rid] += 1
@@ -80,50 +62,31 @@ def repair_missing_values(
     # --------------------------------------------------------
 
     if compiles < REPAIR_COMPILE_BUDGET:
-
-        _, table_now = (
-            compile_count(rails)
-        )
+        _, table_now = compile_count(rails)
         compiles += 1
 
-        usage = usage_histogram(
-            table_now
-        )
+        usage = usage_histogram(table_now)
 
-        zero_slots = [
-            i for i in range(len(rails))
-            if usage[i] == 0
-        ]
+        zero_slots = [i for i in range(len(rails)) if usage[i] == 0]
 
-        existing = set(
-            int(x)
-            for x in rails
-        )
+        existing = {int(x) for x in rails}
 
         missing_items = []
 
         for i in range(total):
-
             b = int(target_bits[i])
 
             if b not in table_now:
-                missing_items.append(
-                    (
-                        int(counts[i]),
-                        b
-                    )
-                )
+                missing_items.append((int(counts[i]), b))
 
         missing_items.sort(reverse=True)
 
         if zero_slots and missing_items:
-
             trial = rails.copy()
 
             placed = []
 
             for _cnt, cand_bits in missing_items:
-
                 if not zero_slots:
                     break
 
@@ -132,24 +95,18 @@ def repair_missing_values(
 
                 slot = zero_slots.pop(0)
 
-                trial[slot] = np.uint16(
-                    cand_bits
-                )
+                trial[slot] = np.uint16(cand_bits)
 
                 existing.add(cand_bits)
 
                 placed.append(slot)
 
             if placed:
-
-                trial_count, trial_table = (
-                    compile_count(trial)
-                )
+                trial_count, _trial_table = compile_count(trial)
 
                 compiles += 1
 
                 if trial_count > best_count:
-
                     best_count = trial_count
 
                     rails = trial
@@ -159,7 +116,7 @@ def repair_missing_values(
                             f"  [repair-batch] placed "
                             f"{len(placed)} missing -> exact "
                             f"{best_count}/{total}",
-                            flush=True
+                            flush=True,
                         )
 
         if best_count == total:
@@ -170,80 +127,51 @@ def repair_missing_values(
     # --------------------------------------------------------
 
     while compiles < REPAIR_COMPILE_BUDGET:
-
         _, table_now = compile_count(rails)
         compiles += 1
 
-        current_count = sum(
-            1
-            for b in target_bits
-            if int(b) in table_now
-        )
+        current_count = sum(1 for b in target_bits if int(b) in table_now)
 
         if current_count >= total:
             break
 
-        usage = usage_histogram(
-            table_now
-        )
+        usage = usage_histogram(table_now)
 
-        slot_order = np.argsort(usage)[
-            :8
-        ]
+        slot_order = np.argsort(usage)[:8]
 
-        existing = set(
-            int(x)
-            for x in rails
-        )
+        existing = {int(x) for x in rails}
 
         missing_items = []
 
         for i in range(total):
-
             b = int(target_bits[i])
 
             if b not in table_now:
-                missing_items.append(
-                    (
-                        int(counts[i]),
-                        b
-                    )
-                )
+                missing_items.append((int(counts[i]), b))
 
         missing_items.sort(reverse=True)
 
-        missing_items = (
-            missing_items[:12]
-        )
+        missing_items = missing_items[:12]
 
         improved = False
 
         for cand_slot in slot_order:
-
             if compiles >= REPAIR_COMPILE_BUDGET:
                 break
 
             for _cnt, cand_bits in missing_items:
-
                 if cand_bits in existing:
                     continue
 
-                saved = int(
-                    rails[cand_slot]
-                )
+                saved = int(rails[cand_slot])
 
-                rails[cand_slot] = (
-                    np.uint16(cand_bits)
-                )
+                rails[cand_slot] = np.uint16(cand_bits)
 
-                trial_count, _ttable = (
-                    compile_count(rails)
-                )
+                trial_count, _ttable = compile_count(rails)
 
                 compiles += 1
 
                 if trial_count > current_count:
-
                     current_count = trial_count
 
                     if current_count > best_count:
@@ -259,7 +187,7 @@ def repair_missing_values(
                             f"  [repair] slot {cand_slot}: "
                             f"{saved:04X} -> {cand_bits:04X} "
                             f"exact {current_count}/{total}",
-                            flush=True
+                            flush=True,
                         )
 
                     break
@@ -280,14 +208,7 @@ def repair_missing_values(
 # ============================================================
 
 
-def repair_safe_slots(
-    target_values,
-    target_bits,
-    counts,
-    rails,
-    max_terms,
-    verbose=False
-):
+def repair_safe_slots(target_values, target_bits, counts, rails, max_terms, verbose=False):
     """
     Final-gap closer for the last few missing values.
 
@@ -306,22 +227,14 @@ def repair_safe_slots(
     original = rails.copy()
 
     def compile_count(r):
-        table = (
-            compile_exact_routes_exhaustive(
-                target_bits,
-                r,
-                max_terms
-            )
-        )
+        table = compile_exact_routes_exhaustive(target_bits, r, max_terms)
         c = 0
         for b in target_bits:
             if int(b) in table:
                 c += 1
         return c, table
 
-    base_count, base_table = (
-        compile_count(rails)
-    )
+    base_count, base_table = compile_count(rails)
 
     if base_count == total:
         return rails
@@ -329,17 +242,10 @@ def repair_safe_slots(
     missing_items = []
 
     for i in range(total):
-
         b = int(target_bits[i])
 
         if b not in base_table:
-
-            missing_items.append(
-                (
-                    int(counts[i]),
-                    b
-                )
-            )
+            missing_items.append((int(counts[i]), b))
 
     if not missing_items:
         return rails
@@ -350,24 +256,16 @@ def repair_safe_slots(
 
     missing_items.sort(reverse=True)
 
-    existing = set(
-        int(x)
-        for x in rails
-    )
+    existing = {int(x) for x in rails}
 
     # Sentinel far outside tensor range; combos with it can
     # never equal any target, so its slot is effectively empty.
     sentinel = np.uint16(0x4280)
 
-    usage = np.zeros(
-        len(rails),
-        dtype=np.int64
-    )
+    usage = np.zeros(len(rails), dtype=np.int64)
 
     for route in base_table.values():
-
         for rid, _sign in route:
-
             usage[rid] += 1
 
     scan_order = np.argsort(usage)
@@ -377,11 +275,7 @@ def repair_safe_slots(
     scanned = 0
 
     for slot in scan_order:
-
-        if (
-            len(safe_slots)
-            >= len(missing_items)
-        ):
+        if len(safe_slots) >= len(missing_items):
             break
 
         if scanned >= SAFE_SCAN_LIMIT:
@@ -394,14 +288,11 @@ def repair_safe_slots(
 
         rails[slot] = sentinel
 
-        trial_count, trial_table = (
-            compile_count(rails)
-        )
+        trial_count, _trial_table = compile_count(rails)
 
         scanned += 1
 
         if trial_count >= base_count:
-
             safe_slots.append(slot)
 
         rails[slot] = np.uint16(saved_bits)
@@ -416,7 +307,6 @@ def repair_safe_slots(
     placed = 0
 
     for _cnt, cand_bits in missing_items:
-
         if not safe_slots:
             break
 
@@ -437,18 +327,14 @@ def repair_safe_slots(
     final_count, _ftable = compile_count(rails)
 
     if final_count < base_count:
-
         # Should not happen (safe slots are pure gains),
         # but keep monotone guarantee anyway.
         return original
 
     if verbose and placed:
-
         print(
-            f"  [safe-repair] placed {placed} "
-            f"missing into safe slots -> "
-            f"{final_count}/{total}",
-            flush=True
+            f"  [safe-repair] placed {placed} missing into safe slots -> {final_count}/{total}",
+            flush=True,
         )
 
     return rails
@@ -457,5 +343,3 @@ def repair_safe_slots(
 # ============================================================
 # BASIS COORDINATE UPDATE
 # ============================================================
-
-

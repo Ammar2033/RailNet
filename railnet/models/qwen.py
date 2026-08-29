@@ -1,5 +1,7 @@
 """Qwen adapter — PLANNED."""
+
 from .base import ModelAdapter
+
 
 class QwenAdapter(ModelAdapter):
     name = "qwen"

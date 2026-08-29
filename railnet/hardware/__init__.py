@@ -1,4 +1,4 @@
-from .architecture import RailNetCard, RailFabric, RoutingFabric
+from .architecture import RailFabric, RailNetCard, RoutingFabric
 from .pci import PCIeDevice
 
-__all__ = ["RailNetCard", "RailFabric", "RoutingFabric", "PCIeDevice"]
+__all__ = ["PCIeDevice", "RailFabric", "RailNetCard", "RoutingFabric"]

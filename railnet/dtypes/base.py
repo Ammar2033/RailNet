@@ -8,6 +8,7 @@ dispatches through this interface.
 Status labels per SPEC.md:
   PROVEN / EXPERIMENTAL / PLANNED
 """
+
 from __future__ import annotations
 
 import abc
@@ -87,8 +88,7 @@ class RailDType(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def numpy_dtype(self):
-        ...
+    def numpy_dtype(self): ...
 
     @property
     @abc.abstractmethod
@@ -103,9 +103,11 @@ class RailDType(abc.ABC):
 _REGISTRY: dict[str, RailDType] = {}
 
 
-def register(dtype_or_cls) -> RailDType:
-    # supports @register on class (instantiate) or instance
+def register(dtype_or_cls):
+    """Register a dtype. Usable as ``@register`` on a class (returns the class)
+    or called with an instance (returns the instance)."""
     import inspect
+
     if inspect.isclass(dtype_or_cls) and issubclass(dtype_or_cls, RailDType):
         inst = dtype_or_cls()
         dtype = inst
@@ -121,7 +123,9 @@ def register(dtype_or_cls) -> RailDType:
 def get_dtype(name: str) -> RailDType:
     key = name.lower()
     if key not in _REGISTRY:
-        raise KeyError(f"Unknown dtype '{name}'. Registered: {sorted(set(k for k in _REGISTRY if k.islower()))}")
+        raise KeyError(
+            f"Unknown dtype '{name}'. Registered: {sorted({k for k in _REGISTRY if k.islower()})}"
+        )
     return _REGISTRY[key]
 
 

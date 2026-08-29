@@ -4,6 +4,7 @@ Route — per-weight topology.
 W = +R3 - R17 + R42  ->  [(3,+1),(17,-1),(42,+1)]
 No per-weight floating coefficient.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
