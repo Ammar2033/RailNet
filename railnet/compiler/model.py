@@ -48,9 +48,11 @@ def _classify(name: str):
     return None
 
 
-def _flush_manifest(out: Path, manifest: dict) -> Path:
+def _flush_manifest(out: Path, manifest: dict, final: bool = False) -> Path:
     m = dict(manifest)
     m["pass_count"] = sum(1 for e in m["tensors"].values() if e.get("status") == "PASS")
+    if not final:
+        m["verdict"] = "INCOMPLETE"  # mid-compile snapshot
     m["checksum_sha256"] = checksum_manifest(m)
     man_path = out / "manifest.json"
     tmp = man_path.with_suffix(".tmp")
@@ -203,7 +205,7 @@ def compile_model(
     )
     manifest["fail_count"] = len(failed)
     manifest["verdict"] = "PASS" if not failed and targets else "INCOMPLETE"
-    man_path = _flush_manifest(out, manifest)
+    man_path = _flush_manifest(out, manifest, final=True)
 
     if verbose:
         print(

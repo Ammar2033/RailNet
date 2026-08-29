@@ -74,6 +74,12 @@ def main() -> int:
     report["verify_compiled"] = verify_compiled(args.out)
 
     model = RailNetModel.load(args.out)
+    if not model.is_fully_compiled:
+        report["verdict"] = "INCOMPLETE"
+        report["note"] = "not every layer is compiled yet — rerun with --resume to finish"
+        _write(report)
+        return 1
+
     tok = model.get_tokenizer()
     ids = list(tok.encode(args.prompt).ids)
 
@@ -92,12 +98,16 @@ def main() -> int:
         else "FAIL"
     )
 
+    _write(report)
+    return 0 if report["verdict"] == "PASS" else 1
+
+
+def _write(report: dict) -> None:
     out = ROOT / "results" / "gemma_repro.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2, ensure_ascii=False))
     print(json.dumps(report, indent=2, ensure_ascii=False))
     print(f"\n-> {out}")
-    return 0 if report["verdict"] == "PASS" else 1
 
 
 if __name__ == "__main__":

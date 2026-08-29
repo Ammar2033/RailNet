@@ -34,7 +34,10 @@ def _hf_logits(model_dir: str, ids: list[int], fp32: bool):
     from transformers import AutoModelForCausalLM
 
     dtype = torch.float32 if fp32 else torch.bfloat16
-    hf = AutoModelForCausalLM.from_pretrained(model_dir, torch_dtype=dtype)
+    try:
+        hf = AutoModelForCausalLM.from_pretrained(model_dir, dtype=dtype)
+    except TypeError:  # older transformers
+        hf = AutoModelForCausalLM.from_pretrained(model_dir, torch_dtype=dtype)
     hf.eval()
     with torch.no_grad():
         out = hf(torch.tensor([ids]))
@@ -75,11 +78,14 @@ def main() -> int:
     ap.add_argument("--hf-fp32", action="store_true", help="run HF in float32 (closer to RailNet)")
     args = ap.parse_args()
 
-    have_compile = (Path(args.compiled) / "manifest.json").exists()
-    if have_compile:
+    if (Path(args.compiled) / "manifest.json").exists():
         model = RailNetModel.load(args.compiled)
+        have_compile = model.is_fully_compiled
+        if not have_compile:
+            print("compiled/ is incomplete — dense-only cross-check (graph fidelity)")
     else:
         model = RailNetModel.from_source(Path(args.model_dir) / "model.safetensors")
+        have_compile = False
         print("no compiled/ — dense-only cross-check (graph fidelity)")
 
     tok = model.get_tokenizer()

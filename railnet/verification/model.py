@@ -20,6 +20,8 @@ def _bits(a: np.ndarray) -> np.ndarray:
 
 def verify_forward(model, input_ids, per_layer: bool = True) -> dict:
     """Compare ``model.forward`` (rail) with ``model.forward_dense`` on one prompt."""
+    if not getattr(model, "is_fully_compiled", True):
+        raise RuntimeError("model is not fully compiled — the rail path needs every layer")
     rail = model.forward(input_ids, backend="rail", capture_hidden=per_layer)
     dense = model.forward(input_ids, backend="dense", capture_hidden=per_layer)
     rail_logits, rail_h = rail if per_layer else (rail, [])
@@ -50,6 +52,8 @@ def verify_forward(model, input_ids, per_layer: bool = True) -> dict:
 
 def verify_generation(model, prompt, max_new_tokens: int = 8, tokenizer=None) -> dict:
     """Greedy decode on both backends; the token sequences must match exactly."""
+    if not getattr(model, "is_fully_compiled", True):
+        raise RuntimeError("model is not fully compiled — the rail path needs every layer")
     from railnet.runtime.generation import generate
 
     rail = generate(

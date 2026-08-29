@@ -97,6 +97,8 @@ class RailNetModel:
             norms[key] = _bf16_bits_to_f64(raw)
         return norms
 
+    _ALL_ROLES = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj")
+
     def _load_layer_linears(self, b: int) -> dict:
         compiled = {}
         for entry in self.manifest["tensors"].values():
@@ -109,6 +111,11 @@ class RailNetModel:
                 tuple(entry["shape"]),
             )
         return compiled
+
+    @property
+    def is_fully_compiled(self) -> bool:
+        """True iff every layer has all 7 linear roles compiled (rail path usable)."""
+        return all(all(role in layer for role in self._ALL_ROLES) for layer in self._linears)
 
     @classmethod
     def load(cls, artifact_path: str, device=None) -> RailNetModel:
@@ -239,10 +246,14 @@ class RailNetModel:
         """Verification reference: same ops, weights streamed dense from the safetensors."""
         return self.forward(input_ids, backend="dense", **kw)
 
-    def generate(self, prompt, max_new_tokens: int = 64, tokenizer=None, **_kwargs) -> dict:
+    def generate(
+        self, prompt, max_new_tokens: int = 64, tokenizer=None, backend: str = "rail"
+    ) -> dict:
         from railnet.runtime.generation import generate
 
-        return generate(self, prompt, max_new_tokens=max_new_tokens, tokenizer=tokenizer)
+        return generate(
+            self, prompt, max_new_tokens=max_new_tokens, tokenizer=tokenizer, backend=backend
+        )
 
     # ---- tokenizer ----------------------------------------------
 
