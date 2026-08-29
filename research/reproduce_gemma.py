@@ -41,6 +41,9 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--resume", action="store_true", help="skip tensors already compiled in --out")
     ap.add_argument("--skip-compile", action="store_true")
+    ap.add_argument(
+        "--lean", action="store_true", help="memory-tight: stream refs, non-prepared kernel"
+    )
     ap.add_argument("--prompt", default="Hello")
     ap.add_argument("--max-new-tokens", type=int, default=8)
     args = ap.parse_args()
@@ -74,6 +77,7 @@ def main() -> int:
     report["verify_compiled"] = verify_compiled(args.out)
 
     model = RailNetModel.load(args.out)
+    model.lean = args.lean
     if not model.is_fully_compiled:
         report["verdict"] = "INCOMPLETE"
         report["note"] = "not every layer is compiled yet — rerun with --resume to finish"

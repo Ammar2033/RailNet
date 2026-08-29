@@ -18,7 +18,7 @@ import numpy as np
 
 from railnet.dtypes.bf16 import bf16_array_to_float32
 from railnet.embedding import MmapRowLookup
-from railnet.kernel import CompiledTensor, rail_linear_fast
+from railnet.kernel import CompiledTensor, rail_linear, rail_linear_fast
 from railnet.safetensors_reader import read_tensor_raw
 from railnet.transformer import GemmaContext, block_forward, rms_norm
 
@@ -71,6 +71,9 @@ class RailNetModel:
         self._norms: list[dict] = [self._load_layer_norms(b) for b in range(self.n_layers)]
         self._linears: list[dict] = [self._load_layer_linears(b) for b in range(self.n_layers)]
         self._dense_cache: dict[str, tuple[np.ndarray, tuple]] = {}
+        # memory-tight full-model runs: stream reference weights, and use the
+        # non-prepared rail kernel (no ~12 GB of cached gather indices).
+        self.lean = False
 
     # ---- construction helpers ----------------------------------------
 
@@ -168,9 +171,10 @@ class RailNetModel:
                     "(from_source models are dense-only)"
                 )
             c = comp[short]
+            kern = rail_linear if self.lean else rail_linear_fast
             out = np.empty((x.shape[0], c.out_features), dtype=np.float64)
             for r in range(x.shape[0]):
-                out[r] = rail_linear_fast(x[r].astype(np.float64), c)
+                out[r] = kern(x[r].astype(np.float64), c)
             return out
 
         return lin
@@ -187,7 +191,8 @@ class RailNetModel:
         if cached is None:
             raw, shape = read_tensor_raw(name, model_file=self.source_model)
             cached = (raw, tuple(shape))
-            self._dense_cache[name] = cached
+            if not self.lean:
+                self._dense_cache[name] = cached
         raw, shape = cached
         return bf16_array_to_float32(raw).astype(np.float64).reshape(shape)
 
