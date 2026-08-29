@@ -223,6 +223,22 @@ def test_verify_generation_rail_vs_dense(compiled):
     assert r["rail_tokens"] == r["dense_tokens"]
 
 
+def test_representation_cost_is_honest(compiled):
+    from railnet.analysis import representation_cost
+
+    _manifest, out, _tensors = compiled
+    r = representation_cost(str(out))
+    t = r["totals"]
+    assert r["tensors"] == 14
+    # route-id map stored as uint16 == dense weight bits exactly
+    assert t["route_id_bits_stored"] == t["dense_bits"]
+    # so the full representation is strictly larger than dense
+    assert t["effective_bits_stored"] > t["dense_bits"]
+    assert t["ratio_stored"] > 1.0
+    # no dramatic compression even at the theoretical minimum id width
+    assert t["ratio_min"] > 0.3
+
+
 def test_verify_kernel_rail_vs_dense(compiled):
     from railnet.verification.kernel import verify_kernel
 
