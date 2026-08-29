@@ -5,7 +5,8 @@ Last updated 2026-08-29.
 ## Proven
 
 - **Lossless BF16 rail representation.** 182/182 Gemma3 1B linear tensors compile
-  exact via the rail-count escalation ladder (most at 96 rails, ~7 need 128–192).
+  exact via the rail-count escalation ladder — 175 at 96 rails, 6 at 128, 1 at 192.
+  Reproducible: `railnet compile model_data/model.safetensors --resume`.
 - **rail path ≡ dense path** of the same transformer graph, BF16-bitwise, full
   vocab + per layer (`railnet.verification.verify_forward`).
 - **Graph faithful to Gemma3.** RailNet's dense path vs HuggingFace `transformers`:
