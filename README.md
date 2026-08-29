@@ -25,11 +25,12 @@ Gemma3 1B class (`hidden=1152, layers=26, vocab=262144, BF16`):
 
 * **182 / 182 linear tensors compiled lossless** via the rail-count escalation ladder
   (most at 96 rails, ~7 need 128–192) — `railnet compile --resume`
-* **26 / 26 layers + full-vocab logits BF16-bitwise identical between the RailNet rail
-  path and a dense reference of the same graph** (Stage 15B) — i.e. the rail representation
-  loses no information relative to the dense computation. See "What 'exact' means" in
-  `docs/EXACTNESS.md`.
-* Reproduce (needs the weights via `git lfs pull`): `python research/reproduce_gemma.py`
+* **26 / 26 layer hidden states + 262144 / 262144 logit bits identical between the RailNet
+  rail path and a dense reference of the same graph**, greedy generation identical
+  (`results/gemma_repro.json`) — the rail representation loses no information relative to
+  the dense computation. See "What 'exact' means" in `docs/EXACTNESS.md`.
+* Reproduce (needs `git lfs pull`):
+  `railnet compile model_data/model.safetensors --resume && python research/reproduce_gemma.py --skip-compile --lean`
 * Synthetic-model version runs in CI: `tests/exactness/test_end_to_end_runtime.py`
 * Embedding: exact mmap row lookup (NOT compressed)
 * Runtime dense linear weight arrays: **ABSENT**

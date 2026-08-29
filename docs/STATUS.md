@@ -7,8 +7,10 @@ Last updated 2026-08-29.
 - **Lossless BF16 rail representation.** 182/182 Gemma3 1B linear tensors compile
   exact via the rail-count escalation ladder — 175 at 96 rails, 6 at 128, 1 at 192.
   Reproducible: `railnet compile model_data/model.safetensors --resume`.
-- **rail path ≡ dense path** of the same transformer graph, BF16-bitwise, full
-  vocab + per layer (`railnet.verification.verify_forward`).
+- **rail path ≡ dense path** of the same transformer graph, BF16-bitwise —
+  **verified on the full Gemma3 1B**: 26/26 layer hidden states exact, 0/262144
+  logit-bit mismatch, greedy generation identical (`results/gemma_repro.json`).
+  Reproduce: `python research/reproduce_gemma.py --skip-compile --lean`.
 - **Graph faithful to Gemma3.** RailNet's dense path vs HuggingFace `transformers`:
   argmax + greedy sequence identical, cosine 0.9999996 (`research/crosscheck_hf.py`).
 - Working CPU runtime (`RailNetModel`), compiler (`compile_model`), verification
