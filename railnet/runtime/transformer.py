@@ -70,7 +70,7 @@ class RailNetModel:
         )
         self._norms: list[dict] = [self._load_layer_norms(b) for b in range(self.n_layers)]
         self._linears: list[dict] = [self._load_layer_linears(b) for b in range(self.n_layers)]
-        self._dense_cache: dict[str, np.ndarray] = {}
+        self._dense_cache: dict[str, tuple[np.ndarray, tuple]] = {}
 
     # ---- construction helpers ----------------------------------------
 
@@ -176,14 +176,20 @@ class RailNetModel:
         return lin
 
     def _dense_weight(self, layer: int, role: str) -> np.ndarray:
-        """Reference only — the original BF16 weight streamed from the safetensors."""
+        """Reference only — the original BF16 weight streamed from the safetensors.
+
+        Caches the raw uint16 bits (a full 1B model is ~1.25 GB of them); the
+        float64 view is rebuilt per call so the reference forward does not
+        accumulate ~10 GB of float64 weights.
+        """
         name = _weight_name(layer, role)
-        w = self._dense_cache.get(name)
-        if w is None:
+        cached = self._dense_cache.get(name)
+        if cached is None:
             raw, shape = read_tensor_raw(name, model_file=self.source_model)
-            w = bf16_array_to_float32(raw).astype(np.float64).reshape(shape)
-            self._dense_cache[name] = w
-        return w
+            cached = (raw, tuple(shape))
+            self._dense_cache[name] = cached
+        raw, shape = cached
+        return bf16_array_to_float32(raw).astype(np.float64).reshape(shape)
 
     def _dense_backend(self, b: int):
         def lin(short: str, x: np.ndarray) -> np.ndarray:
