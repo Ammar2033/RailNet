@@ -37,14 +37,18 @@ TEXT = (
 ) * 6
 
 
-def _ste_ternary(g):
-    """Trained-ternary: coeff in {-1,0,+1}, threshold at 0.7*mean|g| per rail
-    column, straight-through gradient. tanh keeps g bounded so it trains."""
+def _ste_ternary(g, max_terms: int | None):
+    """Trained-ternary coeff in {-1,0,+1}, straight-through. With ``max_terms``,
+    keep only the top-|g| terms per weight (RailNet's route budget)."""
     import torch
 
     t = torch.tanh(g)
     delta = 0.7 * t.abs().mean(dim=(0, 1), keepdim=True)
-    hard = torch.sign(t) * (t.abs() > delta).float()
+    keep = t.abs() > delta
+    if max_terms is not None and t.shape[-1] > max_terms:
+        thr = t.abs().topk(max_terms, dim=-1).values[..., -1:]
+        keep = keep & (t.abs() >= thr)
+    hard = torch.sign(t) * keep.float()
     return hard + (t - t.detach())  # STE
 
 
@@ -60,6 +64,7 @@ def main() -> int:
     ap.add_argument("--block", type=int, default=48)
     ap.add_argument("--entropy-weight", type=float, default=3e-3)
     ap.add_argument("--l1", type=float, default=1e-4)
+    ap.add_argument("--max-terms", type=int, default=4)
     args = ap.parse_args()
     torch.manual_seed(0)
 
@@ -84,7 +89,7 @@ def main() -> int:
             self.scale = nn.Parameter(torch.ones(o, 1))
 
         def _coeff(self):
-            return _ste_ternary(self.g)  # (o, i, n_rails) in {-1,0,+1}
+            return _ste_ternary(self.g, args.max_terms)  # (o, i, n_rails) in {-1,0,+1}
 
         def weight(self):
             return self.scale * (self._coeff() @ self.rails)
