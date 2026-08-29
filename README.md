@@ -36,9 +36,9 @@ Gemma3 1B class (`hidden=1152, layers=26, vocab=262144, BF16`):
 
 ## What is NOT claimed
 
-* "Exact" means rail path ≡ dense path of the *same* transformer graph. Independent
-  token-for-token cross-check against HuggingFace `modeling_gemma3` is a separate, still-open
-  validation item.
+* "Exact" means rail path ≡ dense path of the *same* transformer graph. The graph itself is
+  cross-checked against HuggingFace `transformers` Gemma3 (`research/crosscheck_hf.py`):
+  argmax + greedy-sequence match, cosine 0.9999996 — behavioural, not bitwise (float64 vs bf16).
 * No dramatic total bit-storage compression yet — route-map cost is ~dense storage (honest ≈1.23× on layer-0). See `docs/MEMORY.md`.
 * No ASIC/FPGA throughput speedup claimed until built and measured.
 * 32B / 64B / 128B multi-chip capacities are **architectural goals**, not proven.
