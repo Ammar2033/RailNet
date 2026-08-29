@@ -109,7 +109,7 @@ def _dense_reference(tensors, input_ids):
     over the BF16-rounded weights."""
     ctx = GemmaContext(CFG)
     emb = _bf16(tensors["model.embed_tokens.weight"])
-    h = emb[list(input_ids)].astype(np.float64)
+    h = emb[list(input_ids)].astype(np.float64) * ctx.embed_scale
     caches = [None] * CFG["num_hidden_layers"]
     for b in range(CFG["num_hidden_layers"]):
         p = f"model.layers.{b}"
@@ -131,7 +131,7 @@ def _dense_reference(tensors, input_ids):
             wgt = _bf16(tensors[key]).astype(np.float64)
             return x @ wgt.T
 
-        h, caches[b] = block_forward(h, norms, lin, ctx, cache=caches[b], pos_offset=0)
+        h, caches[b] = block_forward(h, norms, lin, ctx, cache=caches[b], pos_offset=0, layer_idx=b)
     hf = rms_norm(h[-1:], _bf16(tensors["model.norm.weight"]), ctx)
     return emb.astype(np.float64) @ hf[0]
 
@@ -190,3 +190,53 @@ def test_generation_is_deterministic(compiled):
     b = model.generate([2, 7, 1], max_new_tokens=6)
     assert a["tokens"] == b["tokens"]
     assert 1 <= len(a["tokens"]) <= 6
+
+
+def test_verify_compiled_directory(compiled):
+    from railnet.compiler.model import verify_compiled
+
+    _manifest, out, _tensors = compiled
+    r = verify_compiled(str(out))
+    assert r["ok"], r["problems"]
+    assert r["tensors_checked"] == 14
+    assert r["verdict"] == "PASS"
+
+
+def test_verify_forward_rail_vs_dense(compiled):
+    from railnet.verification import verify_forward
+
+    _manifest, out, _tensors = compiled
+    model = RailNetModel.load(str(out))
+    r = verify_forward(model, [3, 1, 4, 1, 5], per_layer=True)
+    assert r["verdict"] == "PASS"
+    assert r["logit_bf16_mismatch"] == 0
+    assert r["all_layers_exact"], r["first_divergent_layer"]
+
+
+def test_verify_generation_rail_vs_dense(compiled):
+    from railnet.verification import verify_generation
+
+    _manifest, out, _tensors = compiled
+    model = RailNetModel.load(str(out))
+    r = verify_generation(model, [2, 7, 1], max_new_tokens=6)
+    assert r["verdict"] == "PASS"
+    assert r["rail_tokens"] == r["dense_tokens"]
+
+
+def test_rail_oracle_matches_dense_oracle(compiled):
+    """Tightest tier: Fraction-exact rail eval == Fraction-exact dense eval."""
+    from railnet.verification import dense_oracle, rail_oracle
+
+    _manifest, out, _tensors = compiled
+    model = RailNetModel.load(str(out))
+    c = model._linears[0]["q_proj"]
+    rng = np.random.default_rng(1)
+    x = (rng.standard_normal(c.in_features) * 0.1).astype(np.float64)
+
+    art = json.loads((out / "layers/layer_00/q_proj.json").read_text())
+    routes = {int(k): tuple(tuple(t) for t in v) for k, v in art["routes"].items()}
+    dense_w = model._dense_weight(0, "q_proj")
+
+    y_rail = rail_oracle(x, np.array(art["rails"], dtype=np.uint16), routes, c.route_ids)
+    y_dense = dense_oracle(x, dense_w)
+    assert np.array_equal(fp32_array_to_bf16_bits(y_rail), fp32_array_to_bf16_bits(y_dense))

@@ -45,24 +45,36 @@ to a subset while iterating; `max_iters` caps the basis-learning loop.
 from railnet.runtime import RailNetModel
 
 model = RailNetModel.load("compiled")
-logits = model.forward([2, 133, 40])   # exact forward, no dense weight array
+logits = model.forward([2, 133, 40])        # rail path, no dense weight array
+ref    = model.forward_dense([2, 133, 40])  # dense reference, same graph
 ```
 
-## Running the Exactness Tests
+## Full Gemma reproduction
+
+```bash
+git lfs pull                       # fetch model_data/model.safetensors (~2 GB)
+python research/reproduce_gemma.py  # compile -> verify_compiled -> verify_forward -> verify_generation
+```
+
+Writes `results/gemma_repro.json`. The `PASS` verdict means the rail path is BF16-bitwise
+identical to the dense computation of the same transformer graph (full vocab + per layer +
+greedy tokens). Use `--limit N` / `--only SUBSTR` / `--max-iters` to iterate on a subset;
+`--skip-compile` reuses an existing `compiled/`.
+
+## Running the exactness tests
 
 ```bash
 python -m pytest tests/exactness/ -v
 ```
 
-`test_exact_tensor.py` checks weight-reconstruction exactness on random
-matrices. `test_end_to_end_runtime.py` builds a synthetic Gemma-shaped model,
-compiles every linear, and asserts the RailNet logits are BF16-bitwise equal
-to a dense reference sharing the same transformer ops.
+`test_exact_tensor.py` checks weight-reconstruction exactness on random matrices.
+`test_end_to_end_runtime.py` builds a synthetic Gemma-shaped model, compiles every linear,
+and runs the full verification hierarchy (Fraction oracle → kernel → forward → generation),
+BF16-bitwise, with no model weights required — this is the CI-sized version of
+`reproduce_gemma.py`.
 
-## Running the Experiments
+## Research history
 
-To run the formal research experiments mapping a whole Gemma block, use the provided scripts in `research/experiments/`:
-```bash
-python research/experiments/12_gemma_linear_runner.py
-```
+`research/experiments/` holds the original 01–16 scripts. They target a pre-refactor API and
+are kept for provenance only — see `research/experiments/README.md` for the current equivalents.
 This script acts as the final stage runner, evaluating weight exactness, math exactness (Fraction Oracle), and output exactness.

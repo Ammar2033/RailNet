@@ -47,6 +47,10 @@ def cmd_verify(args):
     if p.suffix == ".rnmodel":
         ok, info = verify_rnmodel(str(p))
         print(json.dumps({"ok": ok, "header": info}, indent=2))
+    elif p.is_dir() or p.name == "manifest.json":
+        from railnet.compiler.model import verify_compiled
+
+        print(json.dumps(verify_compiled(str(p.parent if p.is_file() else p)), indent=2))
     else:
         ok, _data = verify_checksum(str(p))
         print(json.dumps({"ok": ok}, indent=2))

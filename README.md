@@ -24,13 +24,21 @@ Same physical fabric can execute different models by reprogramming rail values +
 Gemma3 1B class (`hidden=1152, layers=26, vocab=262144, BF16`):
 
 * **182 / 182 tensors lossless, 0 failures** (Stage 15A)
-* **26 / 26 layers PASS; 1,048,576 / 1,048,576 logits BF16-exact** (Stage 15B)
+* **26 / 26 layers + full-vocab logits BF16-bitwise identical between the RailNet rail
+  path and a dense reference of the same graph** (Stage 15B) — i.e. the rail representation
+  loses no information relative to the dense computation. See "What 'exact' means" in
+  `docs/EXACTNESS.md`.
+* Reproduce (needs the weights via `git lfs pull`): `python research/reproduce_gemma.py`
+* Synthetic-model version runs in CI: `tests/exactness/test_end_to_end_runtime.py`
 * Embedding: exact mmap row lookup (NOT compressed)
 * Runtime dense linear weight arrays: **ABSENT**
 * Shared multiplication reduction: **≥93.31% full model** (≈95.97% on layer-0 global fabric)
 
 ## What is NOT claimed
 
+* "Exact" means rail path ≡ dense path of the *same* transformer graph. Independent
+  token-for-token cross-check against HuggingFace `modeling_gemma3` is a separate, still-open
+  validation item.
 * No dramatic total bit-storage compression yet — route-map cost is ~dense storage (honest ≈1.23× on layer-0). See `docs/MEMORY.md`.
 * No ASIC/FPGA throughput speedup claimed until built and measured.
 * 32B / 64B / 128B multi-chip capacities are **architectural goals**, not proven.

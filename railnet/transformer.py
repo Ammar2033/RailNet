@@ -1,11 +1,22 @@
-"""Gemma3 transformer ops shared by dense and railnet paths.
+"""Gemma3 transformer ops shared by the dense reference and the RailNet path.
 
-All semantics verified against official HF modeling_gemma3.py
-and local config.json (Stage 13). Non-linear ops are the SAME
-functions for both paths; only the linear backend differs.
+Only the linear backend differs between the two paths; every non-linear op
+(RMSNorm, RoPE, attention, GELU) is the SAME function for both. A BF16-bitwise
+match between the paths therefore isolates the rail kernel + routing.
+
+Gemma3 specifics modelled here (activated by the corresponding config keys):
+  * embedding scaled by BF16(sqrt(hidden_size))
+  * per-layer local vs global RoPE base (``rope_local_base_freq`` /
+    ``rope_theta``, global every ``sliding_window_pattern``-th layer)
+  * sliding-window causal mask on local layers (``sliding_window``)
+
+Full token-for-token equivalence with HuggingFace ``modeling_gemma3`` is a
+separate validation item — see docs/EXACTNESS.md.
 """
 
 import numpy as np
+
+from railnet.dtypes.bf16 import bf16_array_to_float32, fp32_array_to_bf16_bits
 
 
 class GemmaContext:
@@ -19,6 +30,23 @@ class GemmaContext:
         self.eps = cfg["rms_norm_eps"]
         self.q_scale = cfg["query_pre_attn_scalar"] ** -0.5
         self.rope_local_base = cfg["rope_local_base_freq"]
+        self.rope_global_base = cfg.get("rope_theta", self.rope_local_base)
+        self.sliding_window = cfg.get("sliding_window")
+        self.sliding_window_pattern = int(cfg.get("sliding_window_pattern", 0) or 0)
+        # Gemma3 casts the normalizer to the activation dtype (BF16) before use.
+        self.embed_scale = float(
+            bf16_array_to_float32(
+                fp32_array_to_bf16_bits(np.array([self.hidden**0.5], dtype=np.float32))
+            )[0]
+        )
+
+    def is_global_layer(self, layer_idx: int) -> bool:
+        if not self.sliding_window_pattern:
+            return True
+        return (layer_idx + 1) % self.sliding_window_pattern == 0
+
+    def rope_base(self, layer_idx: int) -> float:
+        return self.rope_global_base if self.is_global_layer(layer_idx) else self.rope_local_base
 
 
 def rms_norm(x, w, ctx: GemmaContext):
@@ -33,9 +61,11 @@ def rotate_half(x):
     return np.concatenate([-x2, x1], axis=-1)
 
 
-def rope_cos_sin(positions, ctx: GemmaContext):
+def rope_cos_sin(positions, ctx: GemmaContext, base: float | None = None):
+    if base is None:
+        base = ctx.rope_local_base
     half = np.arange(0, ctx.head_dim, 2, dtype=np.float64)
-    inv_freq = ctx.rope_local_base ** -(half / ctx.head_dim)
+    inv_freq = base ** -(half / ctx.head_dim)
     pos = np.atleast_1d(np.asarray(positions, dtype=np.float64))
     freqs = pos[:, None] * inv_freq[None, :]
     emb = np.concatenate([freqs, freqs], axis=-1)
@@ -52,6 +82,15 @@ def softmax_last(x):
     return e / e.sum(axis=-1, keepdims=True)
 
 
+def causal_mask(scores, seq, kv_len, pos_offset, sliding_window=None):
+    qi = pos_offset + np.arange(seq)[:, None]
+    kj = np.arange(kv_len)[None, :]
+    blocked = kj > qi
+    if sliding_window:
+        blocked |= kj <= qi - sliding_window
+    return np.where(blocked, -np.inf, scores)
+
+
 def block_forward(
     h,
     norms,  # dict of the 6 norm vectors for a layer
@@ -59,11 +98,10 @@ def block_forward(
     ctx: GemmaContext,
     cache=None,  # per-block KV cache dict or None
     pos_offset=0,
+    layer_idx=0,
 ):
-    """
-    One Gemma3 decoder layer with sandwich norms and an
-    optional growing KV cache. Returns (out, cache).
-    """
+    """One Gemma3 decoder layer with sandwich norms and an optional growing KV
+    cache. Returns ``(out, cache)``."""
     seq = h.shape[0]
     residual = h
 
@@ -80,7 +118,7 @@ def block_forward(
     kh = rms_norm(kh, norms["k_norm"], ctx)
 
     positions = pos_offset + np.arange(seq)
-    cos, sin = rope_cos_sin(positions, ctx)
+    cos, sin = rope_cos_sin(positions, ctx, base=ctx.rope_base(layer_idx))
 
     if cache is not None:
         kh = np.concatenate([cache["K"], kh], axis=1)
@@ -97,9 +135,8 @@ def block_forward(
 
     scores = np.matmul(qh, kh_rep_rot.transpose(0, 2, 1)) * ctx.q_scale
 
-    qi = pos_offset + np.arange(seq)[:, None]
-    kj = np.arange(kv_len)[None, :]
-    scores = np.where(kj > qi, -np.inf, scores)
+    window = None if ctx.is_global_layer(layer_idx) else ctx.sliding_window
+    scores = causal_mask(scores, seq, kv_len, pos_offset, sliding_window=window)
 
     probs = softmax_last(scores)
     ctx_out = np.matmul(probs, vh_rep)

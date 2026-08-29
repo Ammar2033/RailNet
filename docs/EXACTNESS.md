@@ -26,6 +26,32 @@ Measures the differences caused strictly by floating-point accumulation order.
 - Because `(a + b) + c` is not always exactly equal to `a + (b + c)` in standard floating-point representation, the *order* in which the sparse kernel accumulates terms compared to dense dot-products will result in minute differences.
 - **Criteria**: This is a diagnostic metric only. It does not indicate a loss of exactness, merely the reality of floating-point arithmetic ordering.
 
+## What "exact" means at the model level
+
+The whole-model guarantee is **rail path ≡ dense path of the identical graph**: RailNet's
+runtime and a dense reference run the *same* transformer ops (RMSNorm, RoPE, attention, GELU,
+the same streamed embedding and final norm) and differ only in the linear backend. `verify_forward`
+asserts BF16-bitwise equality of the logits (full vocab) and of every layer's hidden state between
+those two paths. This proves the rail representation + kernel lose no information relative to the
+dense computation.
+
+It does **not** by itself claim token-for-token equivalence with HuggingFace `modeling_gemma3`.
+`railnet.transformer` models the Gemma3 specifics it needs (BF16 `sqrt(hidden)` embedding
+normalizer, per-layer local/global RoPE base, sliding-window mask on local layers), but an
+independent cross-check against a reference implementation is a separate, still-open validation
+item. Run `python research/reproduce_gemma.py` for the rail≡dense reproduction.
+
+## Validation tiers in code
+
+| Tier | Function | Checks |
+|---|---|---|
+| Weight | `verification.verify_tensor_exact` | every unique BF16 value has an exact rail route |
+| Kernel (Fraction) | `verification.rail_oracle` vs `dense_oracle` | exact linear result, no FP rounding |
+| Kernel (BF16) | `verification.kernel.verify_kernel` | `rail_linear` == dense linear, BF16-bitwise |
+| Block | `verification.transformer.verify_block` | one decoder layer, rail vs dense |
+| Model | `verification.verify_forward` | full forward + per-layer hidden, rail vs dense |
+| Generation | `verification.verify_generation` | greedy token sequence, rail vs dense |
+
 ## Verification API
 
 ```python
