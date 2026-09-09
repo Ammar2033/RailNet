@@ -13,8 +13,8 @@ Architecture Details for Gemma-2B:
 Execution Paradigm:
 - Chunked Tile Streaming: Partitions massive projections (such as 16384 x 2048 MLP)
   into 4-output-feature chunks matching the 4 physical hardware tiles.
-- Ping-Pong Double Buffering: Next chunk weights stream via PCIe DMA while
-  current chunk is computed in hardware.
+- Each chunk is compiled into an in-memory CompiledTensor-compatible object via
+  the INT8 rail basis compiler, then dispatched through the PCIe pipeline.
 - Bit-exact Numerical Verification: Compares streamed FPGA inference with
   direct CPU reference.
 """
@@ -22,16 +22,14 @@ Execution Paradigm:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import json
 import math
-from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from railnet.compiler.int8 import compile_int8_linear, quantize_to_int8
-from railnet.core.tensor import RailTensor
-from railnet.kernel import CompiledTensor, prepare
+from railnet.compiler.int8 import compile_int8_tensor, quantize_to_int8
+from railnet.core.shape import Shape
+from railnet.kernel import rail_linear_fast
 from railnet.runtime.pcie import (
     REG_CTRL,
     REG_STATUS,
@@ -41,6 +39,46 @@ from railnet.runtime.pcie import (
     REG_CYCLE_COUNT,
     RailNetPCIeDriver,
 )
+
+
+class InMemoryCompiledChunk:
+    """In-memory CompiledTensor-compatible chunk for FPGA tile dispatch.
+
+    Wraps the output of compile_int8_tensor (a RailTensor) into an attribute-based
+    object compatible with rail_linear_fast and MockPCIeBridge.dma_transfer.
+    """
+
+    def __init__(self, rail_tensor, shape: Tuple[int, int], scale: float):
+        rt = rail_tensor
+        self.out_features = shape[0]
+        self.in_features = shape[1]
+        self.rail_count = rt.rail_count
+        self.max_terms = rt.max_terms
+        self.scale = scale
+        self.dtype = rt.dtype
+
+        # Float64 rail basis for accumulation
+        self.rails_f64 = rt.rails_bits.astype(np.float64)
+        self.rails_int32 = rt.rails_bits.astype(np.int32)
+
+        # Route tables (65536 per-code lookup)
+        rows = 65_536
+        mt = self.max_terms
+        self.term_rail = np.zeros((rows, mt), dtype=np.int32)
+        self.term_sign = np.zeros((rows, mt), dtype=np.int8)
+        self.term_active = np.zeros((rows, mt), dtype=bool)
+
+        for bits_key, terms in rt.routes.items():
+            g = int(bits_key)
+            for t_i, (rid, sgn) in enumerate(terms):
+                self.term_rail[g, t_i] = rid
+                self.term_sign[g, t_i] = sgn
+                self.term_active[g, t_i] = True
+
+        # route_ids: per-element uint8-as-int32 map
+        self.route_ids = rt.route_ids.astype(np.int32).reshape(shape)
+        self.shape = shape
+        self.prepared = False  # Flag for rail_linear_fast prepare()
 
 
 @dataclass
@@ -77,7 +115,6 @@ class GemmaLayerWeights:
         cfg = config or Gemma2BConfig()
         rng = np.random.default_rng(seed + layer_idx * 1000)
 
-        # Scale weights like standard initialized Transformer
         scale_attn = 1.0 / math.sqrt(cfg.hidden_size)
         scale_mlp = 1.0 / math.sqrt(cfg.intermediate_size)
 
@@ -99,70 +136,64 @@ class GemmaLayerWeights:
 
 
 def gelu_approx(x: np.ndarray) -> np.ndarray:
-    """Accurate GELU non-linearity approximation used in Gemma (tanh formulation)."""
+    """Accurate GELU non-linearity (tanh approximation) used in Gemma."""
     return 0.5 * x * (1.0 + np.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * np.power(x, 3))))
 
 
 def rms_norm(x: np.ndarray, weight: np.ndarray, eps: float = 1e-6) -> np.ndarray:
-    """RMSNorm layer (Gemma adds 1 to weight internally or standard multiply)."""
+    """RMSNorm layer normalization."""
     variance = np.mean(np.square(x), axis=-1, keepdims=True)
     normed = x * (1.0 / np.sqrt(variance + eps))
     return normed * weight
 
 
-@dataclass
-class CompiledChunk:
-    """Compiled slice of a weight matrix matching the physical FPGA tile count."""
-    chunk_idx: int
-    out_start: int
-    out_end: int
-    compiled_tensor: CompiledTensor
-    scale: float
-
-
 class ChunkedLinearCompiler:
-    """Compiles large weight matrices into sequential 4-tile chunks for FPGA streaming."""
+    """Compiles large weight matrices into sequential num_tiles-chunk slices for FPGA streaming.
+
+    Each chunk contains exactly num_tiles output rows (one per FPGA tile), with optional
+    zero padding for the final chunk if out_dim % num_tiles != 0.
+    """
 
     def __init__(self, num_tiles: int = 4, rails: int = 32, max_terms: int = 3):
         self.num_tiles = num_tiles
         self.rails = rails
         self.max_terms = max_terms
 
-    def compile_matrix(self, weight: np.ndarray) -> List[CompiledChunk]:
-        """Compile (Out_Dim, In_Dim) weight matrix into sequential chunks of size num_tiles."""
+    def compile_matrix(self, weight: np.ndarray) -> List[Tuple[int, int, InMemoryCompiledChunk]]:
+        """Compile (Out_Dim, In_Dim) weight matrix into sequential tile-sized chunks.
+
+        Returns:
+            List of (out_start, out_end, chunk) tuples for streaming iteration.
+        """
         out_dim, in_dim = weight.shape
         chunks = []
-        chunk_idx = 0
 
         for start in range(0, out_dim, self.num_tiles):
             end = min(start + self.num_tiles, out_dim)
             slice_w = weight[start:end, :]
 
-            # Pad slice if remaining features < num_tiles
-            if (end - start) < self.num_tiles:
-                pad_rows = self.num_tiles - (end - start)
+            actual = end - start
+            if actual < self.num_tiles:
+                # Pad the final slice to num_tiles output rows
+                pad_rows = self.num_tiles - actual
                 slice_w = np.vstack([slice_w, np.zeros((pad_rows, in_dim), dtype=slice_w.dtype)])
 
-            # Compile slice into INT8 RailNet representation
+            # INT8 quantization + rail basis compilation
             int8_w, scale = quantize_to_int8(slice_w)
-            rail_tensor = compile_int8_linear(
-                int8_w,
+            rail_tensor = compile_int8_tensor(
+                raw=int8_w,
                 rails=self.rails,
                 max_terms=self.max_terms,
+                name=f"chunk_{start}_{end}",
+                shape=(self.num_tiles, in_dim),
                 scale=scale,
             )
-            compiled = prepare(rail_tensor)
-
-            chunks.append(
-                CompiledChunk(
-                    chunk_idx=chunk_idx,
-                    out_start=start,
-                    out_end=end,
-                    compiled_tensor=compiled,
-                    scale=scale,
-                )
+            chunk = InMemoryCompiledChunk(
+                rail_tensor=rail_tensor,
+                shape=(self.num_tiles, in_dim),
+                scale=scale,
             )
-            chunk_idx += 1
+            chunks.append((start, end, chunk))
 
         return chunks
 
@@ -175,58 +206,59 @@ class GemmaStreamingPipeline:
         config: Optional[Gemma2BConfig] = None,
         driver: Optional[RailNetPCIeDriver] = None,
         num_tiles: int = 4,
+        rails: int = 32,
+        max_terms: int = 3,
     ):
         self.config = config or Gemma2BConfig()
         self.num_tiles = num_tiles
         self.driver = driver or RailNetPCIeDriver(backend="auto")
-        self.compiler = ChunkedLinearCompiler(num_tiles=num_tiles)
+        self.compiler = ChunkedLinearCompiler(num_tiles=num_tiles, rails=rails, max_terms=max_terms)
 
     def execute_chunked_linear(
         self,
         x: np.ndarray,
-        chunks: List[CompiledChunk],
+        chunks: List[Tuple[int, int, InMemoryCompiledChunk]],
         out_dim: int,
     ) -> np.ndarray:
-        """Stream chunks to the FPGA tiles and collect output activations."""
-        y_out = np.zeros(out_dim, dtype=np.float32)
+        """Stream chunks to the FPGA/mock bridge and collect output activations."""
+        y_out = np.zeros(out_dim, dtype=np.float64)
 
-        for chunk in chunks:
-            # 1. Program FPGA tile registers with chunk routing tables and codebooks
-            self.driver.bridge.programmed_weights["compiled"] = chunk.compiled_tensor
-            self.driver.write_csr(REG_IN_FEATURES, int(chunk.compiled_tensor.in_features))
+        for out_start, out_end, chunk in chunks:
+            # 1. Program FPGA mock bridge with compiled routing tables
+            self.driver.bridge.program_tensor(chunk)
+
+            # 2. Configure registers
+            self.driver.write_csr(REG_IN_FEATURES, chunk.in_features)
             self.driver.write_csr(REG_OUT_FEATURES, self.num_tiles)
             self.driver.write_csr(REG_TILE_MASK, (1 << self.num_tiles) - 1)
 
-            # 2. Stream input activation vector x via DMA H2C
+            # 3. Stream input activation vector via DMA H2C
             self.driver.bridge.stream_activations(x)
 
-            # 3. Read back computed output activations via DMA C2H
+            # 4. Read back computed output activations via DMA C2H
             raw_res = self.driver.bridge.read_results(
                 num_outputs=self.num_tiles,
                 scale=chunk.scale,
             )
 
-            # 4. Write into destination feature vector (trimming any padding)
-            actual_count = chunk.out_end - chunk.out_start
-            y_out[chunk.out_start:chunk.out_end] = raw_res[:actual_count]
+            # 5. Write into destination feature vector (trim final padded rows)
+            actual_count = out_end - out_start
+            y_out[out_start:out_end] = raw_res[:actual_count]
 
-        return y_out
+        return y_out.astype(np.float32)
 
     def forward_mlp(self, x: np.ndarray, weights: GemmaLayerWeights) -> np.ndarray:
         """Compute Gemma-2B GeGLU MLP block via FPGA tile streaming."""
-        # 1. Pre-compile or fetch chunks
         gate_chunks = self.compiler.compile_matrix(weights.gate_proj)
         up_chunks = self.compiler.compile_matrix(weights.up_proj)
         down_chunks = self.compiler.compile_matrix(weights.down_proj)
 
-        # 2. Compute gate and up projections
         gate_act = self.execute_chunked_linear(x, gate_chunks, self.config.intermediate_size)
         up_act = self.execute_chunked_linear(x, up_chunks, self.config.intermediate_size)
 
-        # 3. GeGLU activation: gelu(gate) * up
+        # GeGLU activation: gelu(gate) * up
         hidden_mlp = gelu_approx(gate_act) * up_act
 
-        # 4. Down projection back to hidden_size
         mlp_out = self.execute_chunked_linear(hidden_mlp, down_chunks, self.config.hidden_size)
         return mlp_out
 
@@ -235,22 +267,8 @@ class GemmaStreamingPipeline:
         # 1. Input RMSNorm
         normed_1 = rms_norm(x, weights.input_layernorm, eps=self.config.rms_norm_eps)
 
-        # 2. Self-Attention Projections (chunked over FPGA)
-        q_chunks = self.compiler.compile_matrix(weights.q_proj)
-        k_chunks = self.compiler.compile_matrix(weights.k_proj)
-        v_chunks = self.compiler.compile_matrix(weights.v_proj)
+        # 2. Self-Attention output projection (chunked over FPGA tiles)
         o_chunks = self.compiler.compile_matrix(weights.o_proj)
-
-        q = self.execute_chunked_linear(normed_1, q_chunks, self.config.hidden_size)
-        k = self.execute_chunked_linear(normed_1, k_chunks, self.config.num_key_value_heads * self.config.head_dim)
-        v = self.execute_chunked_linear(normed_1, v_chunks, self.config.num_key_value_heads * self.config.head_dim)
-
-        # Scaled dot-product attention (single token / causal step)
-        # Note: For single token prompt/eval, Q @ K.T
-        scale = 1.0 / math.sqrt(self.config.head_dim)
-        # In MQA / GQA, head outputs are gathered
-        attn_out = np.zeros(self.config.hidden_size, dtype=np.float32)
-        # Simplified single token projection for layer demonstration:
         attn_proj = self.execute_chunked_linear(normed_1, o_chunks, self.config.hidden_size)
         x_residual = x + attn_proj
 
@@ -263,10 +281,10 @@ class GemmaStreamingPipeline:
         return x_residual + mlp_out
 
     def reference_forward_layer(self, x: np.ndarray, weights: GemmaLayerWeights) -> np.ndarray:
-        """Unquantized 32-bit floating point CPU reference for exact comparison."""
+        """Unquantized float32 CPU reference for correlation comparison."""
         normed_1 = rms_norm(x, weights.input_layernorm, eps=self.config.rms_norm_eps)
 
-        # Attention reference
+        # Attention output projection reference
         attn_proj = normed_1 @ weights.o_proj.T
         x_res = x + attn_proj
 
