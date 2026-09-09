@@ -29,7 +29,7 @@ class RailTensor:
         return self.shape.numel
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "name": self.name,
             "shape": list(self.shape.dims),
             "dtype": self.dtype,
@@ -40,3 +40,9 @@ class RailTensor:
                 str(k): [[int(r), int(s)] for r, s in v] for k, v in sorted(self.routes.items())
             },
         }
+        if "scale" in self.metadata:
+            d["scale"] = float(self.metadata["scale"])
+        if self.metadata:
+            d["metadata"] = self.metadata
+        return d
+

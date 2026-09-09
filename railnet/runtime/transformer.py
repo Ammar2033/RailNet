@@ -20,14 +20,14 @@ from railnet.dtypes.bf16 import bf16_array_to_float32
 from railnet.embedding import MmapRowLookup
 from railnet.kernel import CompiledTensor, rail_linear, rail_linear_fast
 from railnet.safetensors_reader import read_tensor_raw
-from railnet.transformer import GemmaContext, block_forward, rms_norm
-
-_LAYER_NORM_KEYS = (
-    "input_layernorm",
-    "post_attention_layernorm",
-    "pre_feedforward_layernorm",
-    "post_feedforward_layernorm",
+from railnet.transformer import (
+    GemmaContext,
+    TransformerContext,
+    block_forward,
+    create_context,
+    rms_norm,
 )
+
 _ATTN_ROLES = ("q_proj", "k_proj", "v_proj", "o_proj")
 
 
@@ -41,10 +41,11 @@ def _weight_name(layer: int, role: str) -> str:
 
 
 class RailNetModel:
-    def __init__(self, manifest: dict, compiled_dir: Path, device=None):
+    def __init__(self, manifest: dict, compiled_dir: Path, device=None, backend: str = "auto"):
         self.manifest = manifest
         self.compiled_dir = Path(compiled_dir)
         self.device = device
+        self.backend = backend
 
         self.config = manifest.get("config") or {}
         if not self.config:
@@ -52,8 +53,8 @@ class RailNetModel:
                 "compiled manifest has no 'config' — recompile with "
                 "railnet.compiler.model.compile_model"
             )
-        self.ctx = GemmaContext(self.config)
-        self.n_layers = int(manifest.get("num_hidden_layers") or self.config["num_hidden_layers"])
+        self.ctx = create_context(self.config)
+        self.n_layers = int(manifest.get("num_hidden_layers") or self.config.get("num_hidden_layers", 0))
 
         self.source_model = self._resolve(manifest.get("source_model"))
         if self.source_model is None or not self.source_model.exists():
@@ -63,12 +64,26 @@ class RailNetModel:
             )
         self.tokenizer_path = self._resolve(manifest.get("tokenizer"))
 
-        consts = manifest["constants"]
-        self._emb = MmapRowLookup(consts["embedding"], model_file=self.source_model)
+        consts = manifest.get("constants", {})
+        emb_name = consts.get("embedding", "model.embed_tokens.weight")
+        self._emb = MmapRowLookup(emb_name, model_file=self.source_model)
+
+        # Handle tied vs untied lm_head
+        lm_head_name = consts.get("lm_head")
+        if lm_head_name and lm_head_name not in ("tied_to_embedding", emb_name):
+            try:
+                self._lm_head = MmapRowLookup(lm_head_name, model_file=self.source_model)
+            except Exception:
+                self._lm_head = self._emb
+        else:
+            self._lm_head = self._emb
+
+        final_norm_name = consts.get("final_norm", "model.norm.weight")
         self._final_norm = _bf16_bits_to_f64(
-            read_tensor_raw(consts["final_norm"], model_file=self.source_model)[0]
+            read_tensor_raw(final_norm_name, model_file=self.source_model)[0]
         )
         self._norms: list[dict] = [self._load_layer_norms(b) for b in range(self.n_layers)]
+        self._biases: list[dict] = [self._load_layer_biases(b) for b in range(self.n_layers)]
         self._linears: list[dict] = [self._load_layer_linears(b) for b in range(self.n_layers)]
         self._dense_cache: dict[str, tuple[np.ndarray, tuple]] = {}
         # memory-tight full-model runs: stream reference weights, and use the
@@ -90,15 +105,28 @@ class RailNetModel:
 
     def _load_layer_norms(self, b: int) -> dict:
         norms = {}
-        for key in _LAYER_NORM_KEYS:
-            raw, _ = read_tensor_raw(f"model.layers.{b}.{key}.weight", model_file=self.source_model)
-            norms[key] = _bf16_bits_to_f64(raw)
-        for key in ("q_norm", "k_norm"):
-            raw, _ = read_tensor_raw(
-                f"model.layers.{b}.self_attn.{key}.weight", model_file=self.source_model
-            )
-            norms[key] = _bf16_bits_to_f64(raw)
+        for key in self.ctx.layer_norm_keys:
+            if key in ("q_norm", "k_norm"):
+                name = f"model.layers.{b}.self_attn.{key}.weight"
+            else:
+                name = f"model.layers.{b}.{key}.weight"
+            try:
+                raw, _ = read_tensor_raw(name, model_file=self.source_model)
+                norms[key] = _bf16_bits_to_f64(raw)
+            except KeyError:
+                pass
         return norms
+
+    def _load_layer_biases(self, b: int) -> dict:
+        biases = {}
+        for role in getattr(self.ctx, "bias_keys", ()):
+            name = f"model.layers.{b}.self_attn.{role}.bias"
+            try:
+                raw, _ = read_tensor_raw(name, model_file=self.source_model)
+                biases[role] = _bf16_bits_to_f64(raw)
+            except KeyError:
+                pass
+        return biases
 
     _ALL_ROLES = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj")
 
@@ -121,7 +149,7 @@ class RailNetModel:
         return all(all(role in layer for role in self._ALL_ROLES) for layer in self._linears)
 
     @classmethod
-    def load(cls, artifact_path: str, device=None) -> RailNetModel:
+    def load(cls, artifact_path: str, device=None, backend: str = "auto") -> RailNetModel:
         p = Path(artifact_path)
         if p.suffix == ".rnmodel":
             from railnet.artifacts.reader import read_rnmodel
@@ -134,7 +162,7 @@ class RailNetModel:
             p = p.parent
         if not manifest_path.exists():
             raise FileNotFoundError(f"no manifest.json at {manifest_path}")
-        return cls(json.loads(manifest_path.read_text()), p, device=device)
+        return cls(json.loads(manifest_path.read_text(encoding="utf-8")), p, device=device, backend=backend)
 
     @classmethod
     def from_source(cls, safetensors_path, config_path=None, tokenizer_path=None, device=None):
@@ -147,10 +175,12 @@ class RailNetModel:
         src = Path(safetensors_path).resolve()
         cfg_path = Path(config_path) if config_path else src.parent / "config.json"
         tok_path = Path(tokenizer_path) if tokenizer_path else src.parent / "tokenizer.json"
+        config = json.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
         manifest = {
-            "config": json.loads(cfg_path.read_text()),
+            "config": config,
             "source_model": str(src),
             "tokenizer": str(tok_path) if tok_path.exists() else None,
+            "num_hidden_layers": config.get("num_hidden_layers"),
             "tensors": {},
             "constants": {
                 "final_norm": "model.norm.weight",
@@ -171,10 +201,30 @@ class RailNetModel:
                     "(from_source models are dense-only)"
                 )
             c = comp[short]
-            kern = rail_linear if self.lean else rail_linear_fast
+            if self.device is not None and getattr(self.device, "sim_engine", None) is not None:
+                for _ in range(x.shape[0]):
+                    self.device.sim_engine.simulate_linear(c, layer_name=f"layer_{b}.{short}")
+
+            if self.device is not None and getattr(self.device, "kind", None) == "pcie":
+                driver = getattr(self.device, "pcie_driver", None)
+                if driver is None:
+                    from .pcie import RailNetPCIeDriver
+
+                    driver = RailNetPCIeDriver(self.device.name)
+                    self.device.pcie_driver = driver
+                return driver.dispatch_linear(x, c)
+
+            if self.lean and self.backend == "numpy":
+                kern = rail_linear
+                out = np.empty((x.shape[0], c.out_features), dtype=np.float64)
+                for r in range(x.shape[0]):
+                    out[r] = kern(x[r].astype(np.float64), c)
+                return out
+
+            from railnet.runtime.linear import rail_linear_dispatch
             out = np.empty((x.shape[0], c.out_features), dtype=np.float64)
             for r in range(x.shape[0]):
-                out[r] = kern(x[r].astype(np.float64), c)
+                out[r] = rail_linear_dispatch(x[r], c, backend=self.backend)
             return out
 
         return lin
@@ -212,7 +262,7 @@ class RailNetModel:
     # ---- execution ------------------------------------------------
 
     def embed(self, ids) -> np.ndarray:
-        """Token rows scaled by Gemma3's BF16(sqrt(hidden)) normalizer."""
+        """Token rows scaled by context embed_scale."""
         return self._emb.rows_f64([int(t) for t in ids]) * self.ctx.embed_scale
 
     def run_layers(self, h, caches, pos_offset, backend="rail", capture_hidden=False):
@@ -227,6 +277,7 @@ class RailNetModel:
                 cache=caches[b],
                 pos_offset=pos_offset,
                 layer_idx=b,
+                biases=self._biases[b],
             )
             if capture_hidden:
                 hidden.append(h.copy())
@@ -238,6 +289,9 @@ class RailNetModel:
         With ``capture_hidden=True`` returns ``(logits, [per-layer hidden])``.
         """
         ids = [int(t) for t in np.asarray(input_ids).reshape(-1)]
+        if self.device is not None and getattr(self.device, "sim_engine", None) is not None:
+            self.device.sim_engine.simulate_pcie_transfer(len(ids), self.ctx.hidden)
+
         caches: list = [None] * self.n_layers
         out = self.run_layers(
             self.embed(ids), caches, 0, backend=backend, capture_hidden=capture_hidden
@@ -247,10 +301,10 @@ class RailNetModel:
         return (logits, out[2]) if capture_hidden else logits
 
     def logits(self, h) -> np.ndarray:
-        """Final norm -> tied LM head -> optional Gemma2 logit softcap."""
+        """Final norm -> tied/untied LM head -> optional logit softcap."""
         from railnet.transformer import softcap
 
-        raw = self._emb.logits_chunked(rms_norm(h[-1:], self._final_norm, self.ctx)[0])
+        raw = self._lm_head.logits_chunked(rms_norm(h[-1:], self._final_norm, self.ctx)[0])
         return softcap(raw, self.ctx.final_softcap)
 
     def forward_dense(self, input_ids, **kw):

@@ -87,6 +87,7 @@ def compile_model(
     tokenizer_path: str | None = None,
     resume: bool = False,
     verbose: bool = True,
+    mixed_precision: bool = False,
 ) -> dict:
     src = Path(safetensors_path).resolve()
     out = Path(out_dir).resolve()
@@ -115,9 +116,14 @@ def compile_model(
     if limit is not None:
         targets = targets[:limit]
 
+    all_tensors = set(list_tensors(model_file=src))
+    lm_head_entry = "lm_head.weight" if "lm_head.weight" in all_tensors else "tied_to_embedding"
+
     manifest: dict = {
         "model": config.get("model_type", "generic"),
-        "dtype": dtype,
+        "dtype": "mixed" if mixed_precision else dtype,
+        "mixed_precision": bool(mixed_precision),
+        "policy": {"mlp": "int8", "attn": "bf16"} if mixed_precision else None,
         "config": config,
         "source_model": str(src),
         "tokenizer": tokenizer_path,
@@ -136,7 +142,7 @@ def compile_model(
             ],
             "final_norm": "model.norm.weight",
             "embedding": "model.embed_tokens.weight",
-            "lm_head": "tied_to_embedding",
+            "lm_head": lm_head_entry,
             "strategy": "read from source_model at runtime (not compiled)",
         },
     }
@@ -153,6 +159,8 @@ def compile_model(
                     "status": "PASS",
                     "layer": layer,
                     "role": role,
+                    "dtype": data.get("dtype", dtype),
+                    "scale": float(data.get("scale", 1.0)),
                     "shape": list(data["shape"]),
                     "rails": int(data.get("rail_count", rails)),
                     "artifact": str(art_path.relative_to(out)),
@@ -166,31 +174,51 @@ def compile_model(
         raw, shape = read_tensor_raw(name, model_file=src)
         meta = tensor_metadata(name, model_file=src)
         assert meta["dtype"] == "BF16", f"{name}: expected BF16, got {meta['dtype']}"
-        if verbose:
-            print(f"[{i + 1}/{len(targets)}] {name}  shape={tuple(shape)}", flush=True)
 
-        # Escalation ladder: retry at more rails (and more iters) until lossless.
-        ladder = [(rails, max_iters), *[(r, max(max_iters, 60)) for r in RAIL_LADDER if r > rails]]
+        is_mlp = role in MLP_ROLES
+        target_dtype = "int8" if (mixed_precision and is_mlp) else dtype
+        if verbose:
+            print(f"[{i + 1}/{len(targets)}] {name}  shape={tuple(shape)} dtype={target_dtype}", flush=True)
+
         tensor = None
         used_rails = rails
         last_exc = ""
-        for r, it in ladder:
+
+        if target_dtype == "int8":
             try:
+                target_rails = 32 if rails > 64 else rails
                 tensor = compiler.compile_tensor(
                     raw,
-                    dtype=dtype,
-                    rails=r,
-                    max_terms=max_terms,
+                    dtype="int8",
+                    rails=target_rails,
+                    max_terms=3,
                     name=name,
                     shape=tuple(shape),
-                    max_iters=it,
                 )
-                used_rails = r
-                break
-            except RuntimeError as exc:
+                used_rails = target_rails
+            except Exception as exc:
                 last_exc = str(exc)
-                if verbose:
-                    print(f"    rails={r}: {exc} — escalating", flush=True)
+        else:
+            # Escalation ladder for BF16: retry at more rails (and more iters) until lossless.
+            ladder = [(rails, max_iters), *[(r, max(max_iters, 60)) for r in RAIL_LADDER if r > rails]]
+            for r, it in ladder:
+                try:
+                    tensor = compiler.compile_tensor(
+                        raw,
+                        dtype=dtype,
+                        rails=r,
+                        max_terms=max_terms,
+                        name=name,
+                        shape=tuple(shape),
+                        max_iters=it,
+                    )
+                    used_rails = r
+                    break
+                except RuntimeError as exc:
+                    last_exc = str(exc)
+                    if verbose:
+                        print(f"    rails={r}: {exc} — escalating", flush=True)
+
         if tensor is None:
             failed.append((name, last_exc))
             manifest["tensors"][name] = {"status": "FAILED", "error": last_exc}
@@ -202,10 +230,13 @@ def compile_model(
         assert tensor.route_ids is not None
         np.save(map_path, tensor.route_ids.astype(np.uint16).reshape(tuple(shape)))
 
+        scale_val = float(getattr(tensor, "metadata", {}).get("scale", 1.0))
         manifest["tensors"][name] = {
             "status": "PASS",
             "layer": layer,
             "role": role,
+            "dtype": target_dtype,
+            "scale": scale_val,
             "shape": list(shape),
             "rails": used_rails,
             "artifact": str(art_path.relative_to(out)),

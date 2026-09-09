@@ -32,11 +32,23 @@ class RailNetCompiler:
         shape: tuple | Shape | None = None,
         max_iters: int = 300,
     ) -> RailTensor:
-        dtype = dtype or self.default_dtype
-        dt = get_dtype(dtype)
-        if dtype.lower() != "bf16":
+        dtype_lower = dtype.lower()
+        if dtype_lower == "int8":
+            from railnet.compiler.int8 import compile_int8_tensor
+
+            int8_rails = rails if rails <= 64 else 32
+            int8_terms = min(max_terms, 3)
+            return compile_int8_tensor(
+                raw=raw,
+                rails=int8_rails,
+                max_terms=int8_terms,
+                name=name,
+                shape=shape,
+            )
+
+        if dtype_lower != "bf16":
             raise NotImplementedError(
-                f"compile_tensor dtype={dtype} is {dt.info.status} — only bf16 PROVEN"
+                f"compile_tensor dtype={dtype} is {dt.info.status} — only bf16 and int8 supported"
             )
 
         # raw: uint16 BF16 bits flattened? Accept either float32 or uint16

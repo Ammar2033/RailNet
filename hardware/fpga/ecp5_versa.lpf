@@ -1,0 +1,52 @@
+# =============================================================================
+# RailNet Lattice ECP5 Physical Preference File (LPF)
+# Target Board: Lattice ECP5-5G Versa Development Kit (LFE5UM5G-45F / 85F)
+# Package: CABGA381
+# =============================================================================
+
+BLOCK RESETPATHS;
+BLOCK ASYNCPATHS;
+
+# -----------------------------------------------------------------------------
+# Clocks
+# -----------------------------------------------------------------------------
+# 100 MHz reference differential oscillator from on-board clock generator
+LOCATE COMP "clk_100_p" SITE "P3";
+LOCATE COMP "clk_100_n" SITE "P4";
+IOBUF PORT "clk_100_p" IO_TYPE=LVDS;
+IOBUF PORT "clk_100_n" IO_TYPE=LVDS;
+FREQUENCY PORT "clk_100_p" 100.0 MHz;
+
+# Internal generated core clock frequency constraint (target 80-100 MHz)
+FREQUENCY NET "core_clk" 85.0 MHz;
+
+# -----------------------------------------------------------------------------
+# Fundamental Active-Low Reset Pushbutton (SW2)
+# -----------------------------------------------------------------------------
+LOCATE COMP "rst_n" SITE "T1";
+IOBUF PORT "rst_n" IO_TYPE=LVCMOS33 PULLMODE=UP;
+
+# -----------------------------------------------------------------------------
+# Status Diagnostic LEDs (Active-Low on Versa, D3-D6)
+# -----------------------------------------------------------------------------
+LOCATE COMP "debug_leds[0]" SITE "E16";
+LOCATE COMP "debug_leds[1]" SITE "D17";
+LOCATE COMP "debug_leds[2]" SITE "D18";
+LOCATE COMP "debug_leds[3]" SITE "E18";
+
+IOBUF PORT "debug_leds[0]" IO_TYPE=LVCMOS25 DRIVE=8;
+IOBUF PORT "debug_leds[1]" IO_TYPE=LVCMOS25 DRIVE=8;
+IOBUF PORT "debug_leds[2]" IO_TYPE=LVCMOS25 DRIVE=8;
+IOBUF PORT "debug_leds[3]" IO_TYPE=LVCMOS25 DRIVE=8;
+
+# -----------------------------------------------------------------------------
+# PCIe Edge SerDes Transceiver (Channel 0 on Quad A)
+# -----------------------------------------------------------------------------
+LOCATE COMP "pcie_refclk_p" SITE "Y11";
+LOCATE COMP "pcie_refclk_n" SITE "Y12";
+IOBUF PORT "pcie_refclk_p" IO_TYPE=LVDS;
+IOBUF PORT "pcie_refclk_n" IO_TYPE=LVDS;
+FREQUENCY PORT "pcie_refclk_p" 100.0 MHz;
+
+LOCATE COMP "pcie_perst_n" SITE "A4";
+IOBUF PORT "pcie_perst_n" IO_TYPE=LVCMOS33 PULLMODE=UP;

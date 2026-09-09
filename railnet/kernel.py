@@ -30,9 +30,16 @@ class CompiledTensor:
         self.tensor_name = data.get("tensor", data.get("scope", "<global>"))
         self.rail_count = data["rail_count"]
         self.max_terms = data["max_terms"]
-        self.rails_f64 = bf16_array_to_float32(np.array(data["rails"], dtype=np.uint16)).astype(
-            np.float64
-        )
+        self.dtype = data.get("dtype", "bf16")
+        self.scale = float(data.get("scale", 1.0))
+        if self.dtype == "int8":
+            self.rails_f64 = np.array(data["rails"], dtype=np.float64)
+            self.rails_int32 = np.array(data["rails"], dtype=np.int32)
+        else:
+            self.rails_f64 = bf16_array_to_float32(np.array(data["rails"], dtype=np.uint16)).astype(
+                np.float64
+            )
+            self.rails_int32 = None
 
         rows = 65_536
         mt = self.max_terms
@@ -99,6 +106,9 @@ def rail_linear(x, compiled):
         G = np.zeros(c.out_features * c.rail_count)
 
     Y = (G.reshape(c.out_features, c.rail_count) * c.rails_f64[None, :]).sum(axis=1)
+    scale = getattr(c, "scale", 1.0)
+    if scale != 1.0:
+        Y = Y * scale
     return Y
 
 
@@ -177,4 +187,8 @@ def rail_linear_fast(x, c):
         minlength=c.out_features * c.rail_count,
     )
 
-    return (G.reshape(c.out_features, c.rail_count) * c.rails_f64[None, :]).sum(axis=1)
+    Y = (G.reshape(c.out_features, c.rail_count) * c.rails_f64[None, :]).sum(axis=1)
+    scale = getattr(c, "scale", 1.0)
+    if scale != 1.0:
+        Y = Y * scale
+    return Y

@@ -27,5 +27,11 @@ model_data/*.safetensors
 
 # Logs / scratch
 *.log
-*.err
-scratch_*.py
+# Native build artifacts & embedded compiler
+*.dll
+*.so
+*.dylib
+*.obj
+*.o
+*.lib
+w64devkit/

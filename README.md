@@ -1,6 +1,8 @@
 # RailNet — Lossless Topology-Driven Neural Execution
 
 > **RailNet is an open-source research project for lossless topology-driven neural-network execution and a future PCIe-attached AI accelerator.**
+>
+> 📌 **Detaylı proje eylem planı, Taalas karşılaştırması ve 4 aşamalı yol haritası için [MASTER_ACTION_PLAN.md](MASTER_ACTION_PLAN.md) belgesini inceleyin.**
 
 RailNet replaces dense runtime weight arrays with **shared primitive rails + topology + routing** while preserving the exact same mathematical information (BF16-bitwise).
 
@@ -21,20 +23,32 @@ Same physical fabric can execute different models by reprogramming rail values +
 
 ## Verified Results (PROVEN)
 
-Gemma3 1B class (`hidden=1152, layers=26, vocab=262144, BF16`):
+### 1. Multi-Model Transformer Runtime (Step 1 Complete)
+* **Llama-3 / 3.2, Qwen-2.5, and Gemma-3** fully supported in the unified polymorphic runtime (`railnet/transformer.py`).
+* **SwiGLU** activation (`silu(gate) * up -> down`), standard RMSNorm ($w$) and Gemma centered RMSNorm ($1+w$).
+* **Meta Llama-3 RoPE frequency scaling** (`factor=32.0`, `high/low freq factors`) and Qwen QKV attention bias vectors.
+* **Preallocated $O(1)$ `KVCache`** buffer eliminating $O(N^2)$ memory reallocation bottlenecks during generation.
+* **229 / 229 unit tests passing** (`py -3 -m pytest tests/unit/`).
 
+### 2. Full-Model Exactness (Gemma3 1B)
 * **182 / 182 linear tensors compiled lossless** via the rail-count escalation ladder
   (most at 96 rails, ~7 need 128–192) — `railnet compile --resume`
 * **26 / 26 layer hidden states + 262144 / 262144 logit bits identical between the RailNet
   rail path and a dense reference of the same graph**, greedy generation identical
-  (`results/gemma_repro.json`) — the rail representation loses no information relative to
-  the dense computation. See "What 'exact' means" in `docs/EXACTNESS.md`.
-* Reproduce (needs `git lfs pull`):
-  `railnet compile model_data/model.safetensors --resume && python research/reproduce_gemma.py --skip-compile --lean`
-* Synthetic-model version runs in CI: `tests/exactness/test_end_to_end_runtime.py`
-* Embedding: exact mmap row lookup (NOT compressed)
-* Runtime dense linear weight arrays: **ABSENT**
-* Shared multiplication reduction: **≥93.31% full model** (≈95.97% on layer-0 global fabric)
+  (`results/gemma_repro.json`). See "What 'exact' means" in `docs/EXACTNESS.md`.
+* Embedding: exact mmap row lookup (NOT compressed).
+* Runtime dense linear weight arrays: **ABSENT**.
+* Shared multiplication reduction: **≥93.31% full model** (≈95.97% on layer-0 global fabric).
+
+### 3. RTL Hardware Synthesis & Timing (Amaranth 0.5 + Yosys + nextpnr)
+* **Stage-A Gather uses 0 DSPs!** (Pure LUT gather + accumulation on Xilinx 7-series; 725 LUTs, 105 FFs).
+* **Full 3-lane `RailNetFullTile` consumes only 2 DSPs** (`results/rtl_synth.json`).
+* **Place & Route Timing on Lattice ECP5:**
+  - Integer Stage-A: **178.95 MHz** (5.58 ns critical path).
+  - BF16/FP32 Stage-A: **34.49 MHz** (28.99 ns on 40nm FPGA, projecting to **400–600 MHz in 16nm/22nm ASIC**).
+* **Taalas vs RailNet PPA & TCO Model:**
+  - RailNet ReRAM (Path B) fits Gemma3 1B on a **single 169.3 mm² monolithic die** at 0.28W.
+  - **78% net TCO savings ($33.9M reduction on a 10,000-chip fleet across 5 models)** compared to Taalas's fixed metal ROM masks (`results/taalas_vs_railnet_ppa.json`).
 
 ## What is NOT claimed
 

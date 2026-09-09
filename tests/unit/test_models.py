@@ -2,7 +2,7 @@
 
 import pytest
 
-from railnet.models import get_adapter
+from railnet.models import get_adapter, get_adapter_for_config
 from railnet.models.gemma import GemmaAdapter
 from railnet.models.llama import LlamaAdapter
 from railnet.models.qwen import QwenAdapter
@@ -23,13 +23,28 @@ class TestAdapterRegistry:
         adapter = get_adapter("llama")
         assert isinstance(adapter, LlamaAdapter)
 
+    def test_llama_aliases(self):
+        assert isinstance(get_adapter("llama3"), LlamaAdapter)
+        assert isinstance(get_adapter("llama-3.2"), LlamaAdapter)
+
     def test_qwen_lookup(self):
         adapter = get_adapter("qwen")
         assert isinstance(adapter, QwenAdapter)
 
+    def test_qwen_aliases(self):
+        assert isinstance(get_adapter("qwen2"), QwenAdapter)
+        assert isinstance(get_adapter("qwen-2.5"), QwenAdapter)
+
     def test_unknown_raises(self):
         with pytest.raises(KeyError, match="Unknown model adapter"):
             get_adapter("gpt4")
+
+    def test_auto_detection_from_config(self):
+        assert isinstance(get_adapter_for_config({"model_type": "llama"}), LlamaAdapter)
+        assert isinstance(get_adapter_for_config({"model_type": "qwen2"}), QwenAdapter)
+        assert isinstance(get_adapter_for_config({"model_type": "gemma3"}), GemmaAdapter)
+        assert isinstance(get_adapter_for_config({"rope_theta": 500000.0}), LlamaAdapter)
+        assert isinstance(get_adapter_for_config({"rope_theta": 1000000.0}), QwenAdapter)
 
 
 # ── GemmaAdapter ──────────────────────────────────────────
@@ -62,27 +77,31 @@ class TestLlamaAdapter:
     def test_properties(self):
         a = LlamaAdapter()
         assert a.name == "llama"
-        assert a.architecture == "llama-generic"
+        assert a.architecture == "llama-3.2-1b"
+        assert a.dtype == "bf16"
 
-    def test_inspect_raises(self):
+    def test_variant_3b(self):
+        a = LlamaAdapter(variant="3b")
+        assert a.architecture == "llama-3.2-3b"
+        assert a.config["hidden_size"] == 3072
+        assert a.config["num_hidden_layers"] == 28
+
+    def test_config(self):
         a = LlamaAdapter()
-        with pytest.raises(NotImplementedError, match="PLANNED"):
-            a.inspect("nonexistent.safetensors")
+        assert a.config["hidden_size"] == 2048
+        assert a.config["num_hidden_layers"] == 16
+        assert a.config["num_attention_heads"] == 32
+        assert a.config["num_key_value_heads"] == 8
+        assert a.config["rope_scaling"]["rope_type"] == "llama3"
 
-    def test_compile_tensor_raises(self):
-        a = LlamaAdapter()
-        with pytest.raises(NotImplementedError):
-            a.compile_tensor(None, "test")
-
-    def test_build_graph_planned(self):
+    def test_build_graph(self):
         a = LlamaAdapter()
         g = a.build_graph()
-        assert g["status"] == "PLANNED"
-
-    def test_build_runtime_raises(self):
-        a = LlamaAdapter()
-        with pytest.raises(NotImplementedError):
-            a.build_runtime("compiled")
+        assert g["architecture"] == "llama-3.2-1b"
+        assert g["layers"] == 16
+        assert g["heads"] == 32
+        assert g["kv_heads"] == 8
+        assert g["status"] == "READY"
 
 
 # ── QwenAdapter ───────────────────────────────────────────
@@ -92,12 +111,27 @@ class TestQwenAdapter:
     def test_properties(self):
         a = QwenAdapter()
         assert a.name == "qwen"
+        assert a.architecture == "qwen-2.5-0.5b"
+        assert a.dtype == "bf16"
 
-    def test_all_methods_raise(self):
+    def test_variant_1_5b(self):
+        a = QwenAdapter(variant="1.5b")
+        assert a.architecture == "qwen-2.5-1.5b"
+        assert a.config["hidden_size"] == 1536
+        assert a.config["num_hidden_layers"] == 28
+
+    def test_config(self):
         a = QwenAdapter()
-        with pytest.raises(NotImplementedError):
-            a.inspect("x")
-        with pytest.raises(NotImplementedError):
-            a.compile_tensor(None, "x")
-        with pytest.raises(NotImplementedError):
-            a.build_runtime("x")
+        assert a.config["hidden_size"] == 896
+        assert a.config["num_hidden_layers"] == 24
+        assert a.config["num_attention_heads"] == 14
+        assert a.config["num_key_value_heads"] == 2
+        assert a.config["rope_theta"] == 1000000.0
+
+    def test_build_graph(self):
+        a = QwenAdapter()
+        g = a.build_graph()
+        assert g["architecture"] == "qwen-2.5-0.5b"
+        assert g["layers"] == 24
+        assert g["has_qkv_bias"] is True
+        assert g["status"] == "READY"
