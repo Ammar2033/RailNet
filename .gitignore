@@ -35,3 +35,6 @@ model_data/*.safetensors
 *.o
 *.lib
 w64devkit/
+
+# Graphy index data
+.graphy/

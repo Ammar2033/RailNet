@@ -17,8 +17,12 @@ IOBUF PORT "clk_100_p" IO_TYPE=LVDS;
 IOBUF PORT "clk_100_n" IO_TYPE=LVDS;
 FREQUENCY PORT "clk_100_p" 100.0 MHz;
 
-# Internal generated core clock frequency constraint (target 80-100 MHz)
+# Internal generated clocks: core (accelerator) and host (PCIe/USB bridge)
+# Both are asynchronous - CDC via Gray-coded AsyncFIFO (hardware/rtl/cdc.py)
 FREQUENCY NET "core_clk" 85.0 MHz;
+FREQUENCY NET "host_clk" 50.0 MHz;
+# For dual-clock top (railnet_dual_clk_top) - host 50 MHz (FTDI/USB) or 62.5 MHz (PCIe)
+FREQUENCY NET "pcie_clk" 62.5 MHz;
 
 # -----------------------------------------------------------------------------
 # Fundamental Active-Low Reset Pushbutton (SW2)

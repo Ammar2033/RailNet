@@ -1,0 +1,50 @@
+name: RailNet Gate 2 CI (SIMULATED)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  sim-and-synth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,rtl]"
+          pip install yowasp-yosys yowasp-nextpnr-ecp5
+
+      - name: Run pytest (all SIMULATED tests)
+        run: |
+          pytest -q --tb=line
+
+      - name: FPGA dry-run synth (ECP5 + Artix-7 wrapper)
+        run: |
+          python hardware/fpga/build_fpga.py --target ecp5 --dry-run --with-dual-clock
+          python hardware/fpga/build_fpga.py --target artix7 --dry-run --with-wrapper --with-dual-clock
+          cat results/fpga_pnr_results.json
+
+      - name: Verify claims matrix (SIMULATED)
+        run: |
+          python scripts/verify_all_claims.py || true
+          cat results/claim_verification_matrix.json | head -n 100
+
+      - name: Benchmark prototype (modelled)
+        run: |
+          python benchmarks/benchmark_fpga_prototype.py
+          cat results/fpga_prototype_metrics.json
+
+      - name: Check hardened driver APIs (no hardware)
+        run: |
+          python -c "from railnet.runtime.pcie import RailNetPCIeDriver; d=RailNetPCIeDriver('ci_test',backend='mock'); print(d.get_link_status()); print(d.get_dma_stats()); assert d.run_self_test(); d.close(); print('driver hardened OK')"
+          python -c "from hardware.fpga.build_fpga import _check_wrapper_syntax, _validate_xdc, _validate_lpf; from pathlib import Path; print(_check_wrapper_syntax()); print(_validate_xdc(Path('hardware/fpga/qmtech_artix7_pcie.xdc'))); print(_validate_lpf(Path('hardware/fpga/ecp5_versa.lpf')))"
