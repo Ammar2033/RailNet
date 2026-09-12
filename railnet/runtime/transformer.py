@@ -96,11 +96,32 @@ class RailNetModel:
         if not p:
             return None
         cand = Path(p)
-        if cand.is_absolute():
+        # Only a rooted path that exists is taken as given. A bare relative path
+        # goes through the bases below, so compiled_dir wins over whatever
+        # happens to sit in the current working directory.
+        if cand.anchor and cand.exists():
             return cand
-        for base in (self.compiled_dir, self.compiled_dir.parent, Path.cwd()):
-            if (base / cand).exists():
-                return (base / cand).resolve()
+        # A manifest compiled on another machine records that machine's paths:
+        # this repo's compiled/manifest.json still points at /Volumes/SSD/...
+        # from a macOS host, which made the Gemma3 reproduction unrunnable
+        # anywhere else. Fall back to the file's name in the usual locations.
+        #
+        # `anchor`, not `is_absolute()`: on Windows a POSIX path like
+        # "/Volumes/SSD/x" is NOT absolute (no drive letter) yet it is rooted,
+        # and joining a rooted path onto a base silently discards the base.
+        rels = [Path(cand.name)]
+        if not cand.anchor:
+            rels.insert(0, cand)
+        for base in (
+            self.compiled_dir,
+            self.compiled_dir.parent,
+            self.compiled_dir.parent / "model_data",
+            Path.cwd(),
+            Path.cwd() / "model_data",
+        ):
+            for rel in rels:
+                if (base / rel).exists():
+                    return (base / rel).resolve()
         return cand
 
     def _load_layer_norms(self, b: int) -> dict:

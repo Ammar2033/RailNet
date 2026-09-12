@@ -49,9 +49,31 @@ three overnight turns did real work and could not push any of it).
 
 ### Risks remaining
 
-1. **The Gemma3 1B exactness result was not re-verified** — `model_data/` is not
-   in the tree. The project's headline correctness claim rests on an artifact
-   from an earlier session.
+1. **The Gemma3 1B exactness claim does not reproduce on this host.** Correcting
+   myself twice here. I first wrote that the weights were missing; they are not —
+   `model_data/model.safetensors` is a real 2 GB file. The reproduction was
+   unrunnable for a different reason: `compiled/manifest.json` records
+   `/Volumes/SSD/…` macOS absolute paths and `_resolve()` trusted any absolute
+   path without checking it existed, so `RailNetModel.load()` failed on every
+   machine but the original author's. With that fixed (and a regression test
+   added), the run completes and **fails**: `verify_compiled` PASS 182/182,
+   `verify_generation` PASS, but `verify_forward` reports
+   `logit_bf16_mismatch: 281`, `all_layers_exact: false` against a documented
+   claim of 0/262144.
+   The cause is not a wrong checkpoint: `routeids` matches the source bf16 bits
+   element-for-element across 3 tensors in 2 layers (~17 M elements, 0
+   mismatches), so the artifact was compiled from exactly these weights.
+   The profile points at drift rather than breakage: `first_divergent_layer: 2`
+   (layers 0 and 1 exact), then 20 of 26 layers off by only 2–6 bf16 values
+   each, ending at 281 of 262,144 logit bits (~0.1%), with greedy generation
+   still token-identical. A wrong checkpoint or a broken kernel would diverge at
+   layer 0 and grow fast; this does not.
+   What remains open is whether it is same-graph drift or a platform float
+   difference — the original run was almost certainly macOS, this is
+   Windows/NumPy. The cheap decider is the Fraction oracle
+   (`docs/EXACTNESS.md` Tier 2) on one diverging layer: exact in rational
+   arithmetic means the platform is responsible.
+   **Do not restate the 0-mismatch claim until then.**
 2. **ReRAM density, energy and TCO remain assumptions.** The entire
    "reprogrammable weight-in-silicon" thesis rests on them and no PDK or IP
    backs them.
