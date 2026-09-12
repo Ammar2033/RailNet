@@ -125,7 +125,7 @@ Her kapı için açık giriş ve çıkış kriterleri belirlenmiş olup, kriterl
 +--------+-----------------------------------+-----------------------+------------------+-----------------+
 | GATE 1 | GATE FPGA FUNCTIONAL              | SIMULATED             | PASS (SIM ONLY)  | Fiziksel test kartı bekleniyor  |
 | GATE 2 | GATE PCIe END-TO-END              | SIMULATED             | PASS (SIM ONLY)  | Fiziksel PCIe bağlantısı yok    |
-| GATE 3 | GATE ASIC STD-CELL MAPPING        | SYNTHESIZED (GENERIC) | BLOCKED / OPEN   | ABC Liberty mapping koşulmadı   |
+| GATE 3 | GATE ASIC STD-CELL MAPPING        | SYNTHESIZED (TECH-MAPPED) | **PASS** (2026-09-12) | Yok — 39,706 hücre / 245,247 µm² |
 | GATE 4 | GATE SRAM MACRO                   | SIMULATED             | BLOCKED / OPEN   | LEF/LIB/GDS/SPICE eksik         |
 | GATE 5 | GATE P&R                          | NOT STARTED           | BLOCKED / OPEN   | Gate 3 ve Gate 4 tarafından blok|
 | GATE 6 | GATE STA                          | NOT STARTED           | BLOCKED / OPEN   | SPEF parazitik & sign-off yok   |
@@ -137,7 +137,7 @@ Her kapı için açık giriş ve çıkış kriterleri belirlenmiş olup, kriterl
 ### Kapı Detayları:
 - **GATE 1 (`GATE FPGA FUNCTIONAL`):** Çıkış kriteri karşılandı (329 unit testi + 10 E2E donanım testi bit-exact geçti). Durum: **PASS (SIMULATION ONLY)**.
 - **GATE 2 (`GATE PCIe END-TO-END`):** Çıkış kriteri simülasyonda karşılandı (AXI-Lite + AXI-Stream protokolü doğrulandı). Fiziksel kart olmadığı için: **PASS (SIMULATION ONLY)**.
-- **GATE 3 (`GATE ASIC STD-CELL MAPPING`):** Yosys ile Sky130 standard-cell (`sky130_fd_sc_hd`) mapping henüz yapılmadı. Durum: **BLOCKED / OPEN**.
+- **GATE 3 (`GATE ASIC STD-CELL MAPPING`):** **GEÇTİ (2026-09-12).** `sky130_fd_sc_hd__tt_025C_1v80.lib` Liberty'sine karşı gerçek ABC haritalaması koşuldu (OpenLane konteynerinde native Yosys 0.38, `abc -fast`): `railnet_top` için **39,706 standart hücre (55 tip), 245,247.712 µm² = 0.245 mm² mantık alanı**, artı bilerek haritalanmamış 24 `$mem_v2` belleği. Alan yalnızca mantıktır ve yerleşim öncesidir. Yeniden üretim: `RAILNET_YOSYS_DOCKER=1 python hardware/asic/synth_asic.py`; kanıt `hardware/asic/gate3_evidence.json`. Not: `yowasp-yosys` (WebAssembly) bu işi bitiremiyor — Liberty'yi modül başına yeniden ayrıştırdığı için saatlerce sürüyor.
 - **GATE 4 (`GATE SRAM MACRO`):** OpenRAM ile üretilmiş fiziksel `.lef`, `.lib`, `.gds`, `.spice` dosyaları bulunmuyor. Durum: **BLOCKED / OPEN**.
 - **GATE 5 (`GATE P&R`):** OpenLane makro yerleşimi ve CTS, Gate 3 ve 4 tamamlanmadan başlatılamaz. Durum: **BLOCKED / OPEN**.
 - **GATE 6 (`GATE STA`):** SPEF parazitikleri çıkarılmadan 200 MHz kanıtlanamaz. Durum: **BLOCKED / OPEN**.

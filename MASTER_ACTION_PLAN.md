@@ -422,7 +422,7 @@ LLM çıkarımında katman geçişlerinde ($L \to L+1$) hesaplama boru hattını
    - `tests/unit/test_gate2_double_buffering.py` (5/5 PASSED): Bank izolasyonu, otonom takas, manuel takas, sürücü prefetch ve thread kuyruğu test edildi.
    - **Tüm Repo Regresyon Testi:** **317 testin tamamı PASSED** (0 hata).
    - **Verilog Netlist:** `hardware/rtl/build/railnet_top.v` (9,929 satır Verilog-2001).
-   - **SkyWater 130nm ASIC Sentezi:** `results/asic_synth.json` (327,884 standart mantık hücresi, 0 hata, PASSED).
+   - **SkyWater 130nm ASIC Sentezi:** *(2026-09-12 düzeltmesi)* Buradaki "327,884 standart mantık hücresi, PASSED" ifadesi yanlıştı — o sayı jenerik Yosys RTLIL primitifiydi, standart hücre değil. Gerçek `sky130_fd_sc_hd` haritalaması ilk kez 2026-09-12'de koşuldu (native Yosys 0.38 + `abc -fast -liberty`, OpenLane konteyneri): `railnet_top` için **39,706 standart hücre (55 tip), 245,247.712 µm² = 0.245 mm² mantık alanı**, artı haritalanmamış 24 `$mem_v2` belleği. Alan yalnızca mantığı kapsar; bellekler gerçek SRAM makrosu ister (Gate 4).
 
 ---
 

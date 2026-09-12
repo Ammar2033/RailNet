@@ -1,0 +1,60 @@
+{
+  "_comment": "Gate 3 (standard-cell technology mapping) evidence. Committed on purpose: hardware/asic/build/ and results/ are both gitignored, so numbers kept only there cannot be audited later. Bulky logs stay ignored; this file is the authoritative record.",
+  "gate": "GATE 3 - ASIC STD-CELL MAPPING",
+  "status": "TECH_MAPPED",
+  "date_utc": "2026-09-12",
+  "top_module": "railnet_top",
+  "standard_cell_tech_mapped": true,
+  "std_cell_count": 39706,
+  "std_cell_distinct_types": 55,
+  "logic_area_um2": 245247.712,
+  "logic_area_mm2": 0.245,
+  "unmapped_cells": {
+    "$mem_v2": 24
+  },
+  "scope_and_limits": {
+    "area_is": "logic only, pre-layout",
+    "memories": "kept as $mem_v2 via `memory -nomap`; mapping them to flip-flops would report an area no real chip would have. Real SRAM macros are Gate 4.",
+    "not_performed": [
+      "placement, routing, clock tree synthesis",
+      "parasitic extraction (SPEF) and sign-off STA",
+      "DRC / LVS",
+      "any physical silicon measurement"
+    ],
+    "evidence_tier": "SYNTHESIZED (STD-CELL TECH-MAPPED, pre-layout)"
+  },
+  "reproduction": {
+    "container_image": "efabless/openlane:latest",
+    "container_digest": "sha256:26719ced90c315b8b4ad7b9dc3e9a176991cea4c3f3282660d8d60d0f0cae229",
+    "yosys": "0.38 (git sha1 543faed9c8c)",
+    "liberty": "sky130_fd_sc_hd__tt_025C_1v80.lib",
+    "liberty_source": "https://raw.githubusercontent.com/efabless/skywater-pdk-libs-sky130_fd_sc_hd/master/timing/sky130_fd_sc_hd__tt_025C_1v80.lib",
+    "liberty_cells_usable": 334,
+    "liberty_cells_skipped": 94,
+    "yosys_script": [
+      "read_verilog railnet_top.v",
+      "hierarchy -check -top railnet_top",
+      "proc",
+      "flatten",
+      "opt_expr",
+      "opt_clean",
+      "check",
+      "memory -nomap",
+      "opt -full",
+      "techmap",
+      "opt -fast",
+      "dfflibmap -liberty <lib>",
+      "abc -fast -liberty <lib>",
+      "setundef -zero",
+      "splitnets",
+      "opt_clean -purge",
+      "stat -liberty <lib> -json"
+    ],
+    "runtime": "about 11 s CPU (abc 7 s)",
+    "note_on_tooling": "yowasp-yosys (WebAssembly) could not finish this: without flatten it re-parses the 12.8 MB Liberty per module (20+ times observed) and with flatten one ABC call ran over 40 minutes without completing. Native Yosys in the container does the same work in seconds."
+  },
+  "supersedes": {
+    "claim": "SkyWater 130nm ASIC synthesis PASSED with 1,383 standard cells / 327,884 logic cells",
+    "why_wrong": "Those counts were generic Yosys RTLIL primitives ($add, $mux, $sdff, $mem_v2) from an elaboration-only script that never ran `abc -liberty`. No standard cell was instantiated and no um2 area existed."
+  }
+}
