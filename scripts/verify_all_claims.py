@@ -146,7 +146,7 @@ CLAIMS_DATABASE = [
         "evidence_tier": "FOUNDRY ARTIFACTS PRESENT (not instantiated)",
         "hardware_verified": False,
         "status": "OPEN (macro/RTL shape mismatch, not missing files)",
-        "notes": "The blocker changed shape: the artifacts exist, but the design never instantiates them and the inferred memory geometries do not tile onto the PDK macros. Small arrays such as 32b x 32 are cheaper as flip-flops than as a 32x256 macro."
+        "notes": "The blocker changed shape: the artifacts exist, but the design never instantiates them and the inferred memory geometries do not tile onto the PDK macros. Small arrays such as 32b x 32 are cheaper as flip-flops than as a 32x256 macro. Sizing is now measured (hardware/asic/gate4_memory_area.json): synthesising railnet_top with memories as flip-flops instead of $mem_v2 grows it from 39,706 cells / 245,247.712 um2 to 317,850 cells / 2,309,721.456 um2, so the memories are 9.4x the entire logic area and real macros would displace about 2.06 mm2. The 16b x 1024 route memories are the only clean fit (two 8x1024 macros each) and also carry most of that area."
     },
     {
         "claim_id": "CLM-10",

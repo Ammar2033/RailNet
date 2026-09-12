@@ -1,0 +1,63 @@
+{
+  "_comment": "Gate 4 sizing: what real SRAM macros would actually buy. Measured by synthesising railnet_top twice against the same Liberty, changing only how inferred memories are handled. Committed because results/ and build/ are gitignored.",
+  "gate": "GATE 4 - SRAM MACRO",
+  "status": "OPEN (quantified, not integrated)",
+  "date_utc": "2026-09-12",
+  "top_module": "railnet_top",
+  "question": "The area in gate3_evidence.json excludes memories. How much do those memories cost if they are not macros?",
+  "measurement": {
+    "memories_unmapped": {
+      "yosys_step": "memory -nomap",
+      "std_cell_count": 39706,
+      "logic_area_um2": 245247.712,
+      "remaining_generic": {"$mem_v2": 24}
+    },
+    "memories_as_flip_flops": {
+      "yosys_step": "memory",
+      "std_cell_count": 317850,
+      "flip_flop_cells": 51883,
+      "area_um2": 2309721.456,
+      "remaining_generic": {}
+    },
+    "delta_um2": 2064473.744,
+    "delta_mm2": 2.064,
+    "ratio_vs_logic_only": 9.42
+  },
+  "reading": "Memories dominate the design: implemented as flip-flops they are 9.4x the entire logic area. Real SRAM macros would displace about 2.06 mm2. This is the strongest argument for closing Gate 4, and it is a cost the project's earlier area claims never accounted for.",
+  "why_not_integrated_yet": {
+    "artifacts_exist": [
+      "sky130_sram_1kbyte_1rw1r_32x256_8 (lef, lib, gds, spice)",
+      "sky130_sram_2kbyte_1rw1r_32x512_8 (lef, lib, gds, spice)"
+    ],
+    "artifacts_missing": [
+      "sky130_sram_4kbyte_1rw1r_32x1024_8 - modelled by hardware/asic/sky130_sram_macros.v but absent from the sky130A PDK"
+    ],
+    "real_blocker": "shape mismatch, not missing files",
+    "inferred_memory_geometries": {
+      "32b x 32": 12,
+      "8b x 64": 4,
+      "27b x 128": 4,
+      "16b x 1024": 4
+    },
+    "available_macro_geometries": ["32b x 256", "8b x 1024", "32b x 512"],
+    "fit_analysis": {
+      "16b x 1024": "the only clean fit - two 8x1024 macros side by side; these are also the largest arrays, so they carry most of the 2.06 mm2",
+      "32b x 32": "smallest macro is 32x256, an 8x waste; flip-flops are likely cheaper here",
+      "8b x 64": "8x1024 would waste 16x",
+      "27b x 128": "no sensible match in the PDK"
+    },
+    "also": "No module instantiates any SRAM macro today; hardware/asic/sky130_sram_macros.v is a behavioural model of macros that were never wired in."
+  },
+  "reproduction": {
+    "container_image": "efabless/openlane:latest",
+    "yosys": "0.38",
+    "liberty": "sky130_fd_sc_hd__tt_025C_1v80.lib",
+    "pdk": "sky130A via volare c6d73a35f524070e85faff4a6a9eef49553ebc2b",
+    "note": "Identical scripts except `memory -nomap` versus `memory`."
+  },
+  "not_performed": [
+    "wiring any PDK macro into the RTL",
+    "re-shaping the inferred memories to macro-friendly geometries",
+    "placement or routing with macros present"
+  ]
+}
