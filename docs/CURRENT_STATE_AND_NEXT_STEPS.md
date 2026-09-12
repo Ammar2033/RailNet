@@ -35,7 +35,7 @@ Tüm önemli teknik parametreler `CLAIM → EVIDENCE → REPRODUCTION METHOD/COM
 | **CLM-02** | Ticari 22nm eReRAM Yoğunluğu | 20 Mbit/mm² | **VERIFIED:** TSMC 22ULL / UMC 22nm eReRAM makro dizi verimliliği %48'dir; 1B model 572 mm² tutar. | `SILICON-MEASURED (Dökümhane IP)` | **FOUNDRY_IP_SPEC_VERIFIED** |
 | **CLM-03** | Ticari 22nm eReRAM Okuma Enerjisi| 0.55 pJ/bit | **VERIFIED:** Bitline kapasitansı ve algılama amfileri dahil 4.4 pJ/byte (0.55 pJ/bit) gerçek değerdir. | `SILICON-MEASURED (Dökümhane IP)` | **FOUNDRY_IP_SPEC_VERIFIED** |
 | **CLM-04** | ASIC Stage-B Frekansı | 200.0 MHz | **DOWNGRADED:** OpenLane SDC kısıtıdır; yönlendirilmiş netlist üzerinde OpenSTA koşulmamıştır. | `THEORETICAL (SDC HEDEFİ)` | **UNVERIFIED_TARGET** |
-| **CLM-05** | FPGA 4-Tile Grid Frekansı | 83.79 MHz | **MEASURED:** Lattice ECP5-85F üzerinde `nextpnr-ecp5` ile gerçek yönlendirme Fmax'ı 83.79 MHz ölçüldü. | `FPGA-MEASURED (P&R Analizi)` | **MEASURED_ON_FPGA_PNR** |
+| **CLM-05** | FPGA 4-Tile Grid Frekansı | 83.79 MHz | **NOT REPRODUCED (2026-09-12):** `railnet_top_2x2` yönlendirilemiyor — `nextpnr-ecp5` `ERROR: IO 's_axis_tvalid' is unconstrained in LPF` ile duruyor. `ecp5_versa.lpf` yalnızca saatleri, reset'i, 4 LED'i ve PCIe refclk/perst'i kısıtlıyor; hiçbir AXI ucu kısıtlı değil. Tek tek karolar yönlendiriliyor: `stagea_bram` 209.12 MHz (0 DSP), `stageb_int8` 157.80 MHz, `full_int8_tile` 95.50 MHz. | `NOT REPRODUCED (P&R durdu)` | **UNSUBSTANTIATED** |
 | **CLM-06** | Stage-A Çarpan Sayısı | 0 DSP bloğu | **VERIFIED:** Fubini dağılma matrisi ile çarpma işlemi kaldırılmış; %100 carry-chain ve LUTRAM kullanılmıştır. | `SYNTHESIZED (FPGA MAPPED)` | **VERIFIED_IN_SYNTHESIS** |
 | **CLM-07** | PCIe Bulk DMA Hızlanması | 720× | **DOWNGRADED:** $(3 \times 150\,\text{ns MMIO}) / (2\,\text{B} / 3.2\,\text{GB/s}) = 720\times$ analitik formülüdür; donanım ölçülmemiştir. | `THEORETICAL (ANALİTİK MODEL)` | **MODELLED_ONLY** |
 | **CLM-08** | PCIe Donanım Köprüsü | `/dev/railnet_*` | **MOCK_ONLY:** `MockPCIeBridge` bir yazılım simülasyon nesnesidir; donanım kanıtı sayılamaz. | `SIMULATED (Mock Bridge)` | **MOCK_ONLY_NO_HARDWARE** |
@@ -56,9 +56,13 @@ Yalnızca bitstream üretmekle yetinilmeyip, açık kaynak araçlarla (`yowasp-y
 - **Hedef Donanım:** Lattice ECP5 LFE5U-85F-8CABGA381 (~$50-$70 USD) / QMTech Artix-7 PCIe Dev Board (~$70-$90 USD).
 - **Ölçülen Fiziksel Sonuçlar:**
   * **`railnet_top_2x2` (4 Karo Tam Hızlandırıcı + AXI-Lite + AXI-Stream):**
-    - **Yönlendirilmiş Fmax:** **83.79 MHz** (Kritik gecikme: 11.935 ns).
-    - **Kaynak Kullanımı:** 6,102 LUT4 (%7.2), 2,178 DFF (%2.6), 4 EBR 18Kb BRAM, 8 DSP bloğu (MULT18X18D).
-    - **Yönlendirme Durumu:** %100 Yönlendirme tamamlandı, sıfır unrouted net.
+    - **Durum:** **PNR_FAILED** — yönlendirme tamamlanmıyor (2026-09-12, `yowasp-nextpnr-ecp5` 0.11.1).
+    - **Hata:** `ERROR: IO 's_axis_tvalid' is unconstrained in LPF`. Grid'in AXI uçları
+      `railnet_pcie_wrapper.v`'ye giden dahili arayüzler; çip bacağı değiller, dolayısıyla
+      grid'i tek başına pinlenmiş olarak yönlendirmek yanlış hedef.
+    - **Fmax / kaynak:** Yok. Tamamlanmamış bir koşumdan okunan sayı hiçbir şeyi tarif etmez;
+      daha önce burada yazan 83.79 MHz ve 6,102 LUT4 / 2,178 DFF / 8 DSP değerlerinin
+      arkasında tamamlanmış bir yönlendirme yok.
   * **`stagea_bram` (Fubini Dağılma Matrisi Toplama Kumaşı):**
     - **Yönlendirilmiş Fmax:** **209.12 MHz** (Kritik gecikme: 4.782 ns).
     - **Kaynak:** 400 LUT4, 62 DFF, **0 DSP Bloğu**.
@@ -81,7 +85,7 @@ Fiziksel FPGA kartı ile ana bilgisayar (Host PC) arasındaki köprüyü kuran d
 ---
 
 ### 2.4. Prototip Performans ve Doğruluk Profilleyici (`benchmarks/benchmark_fpga_prototype.py`)
-Lattice ECP5-85F üzerinde ölçülen gerçek 83.79 MHz Fmax ve PCIe Gen2 x1 (400 MB/s sustained DMA) parametreleri ile uçtan uca döngü hassasiyetinde profil çıkarılmış ve [results/fpga_prototype_metrics.json](file:///f:/Projects/2026/Ongoing/RailNet/results/fpga_prototype_metrics.json) içine kaydedilmiştir:
+Varsayılan 100 MHz çekirdek saati (grid yönlendirilemediği için ölçülmüş bir Fmax yok; çıktıda `clock_provenance: ASSUMED` olarak damgalanır) ve PCIe Gen2 x1 (400 MB/s modellenmiş DMA) parametreleri ile uçtan uca döngü hassasiyetinde profil çıkarılmış ve [results/fpga_prototype_metrics.json](file:///f:/Projects/2026/Ongoing/RailNet/results/fpga_prototype_metrics.json) içine kaydedilmiştir:
 
 | Giriş Boyutu ($K$) | DMA H2C Süresi ($\mu\text{s}$) | Çekirdek Hesaplama ($\mu\text{s}$) | DMA C2H Süresi ($\mu\text{s}$) | Toplam Gecikme ($\mu\text{s}$) | Verim (Tokens/sn) | PyTorch Eşleşmesi |
 |---|---|---|---|---|---|---|

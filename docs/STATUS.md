@@ -1,6 +1,6 @@
 # RailNet — Status & Strategy (Living)
 
-> **Official Engineering Audit & Roadmap:** See [docs/CURRENT_STATE_AND_NEXT_STEPS.md](file:///f:/Projects/2026/Ongoing/RailNet/docs/CURRENT_STATE_AND_NEXT_STEPS.md) for the September 2026 Reality Audit, 8-Gate Engineering Framework, Open-Source FPGA Implementation results (83.79 MHz routed), and the Cheap FPGA+PCIe Prototype Roadmap.  
+> **Official Engineering Audit & Roadmap:** See [docs/CURRENT_STATE_AND_NEXT_STEPS.md](file:///f:/Projects/2026/Ongoing/RailNet/docs/CURRENT_STATE_AND_NEXT_STEPS.md) for the September 2026 Reality Audit, 8-Gate Engineering Framework, Open-Source FPGA Implementation results (per-tile P&R 209.12 / 157.80 / 95.50 MHz; the 4-tile grid does **not** route — see CLM-05), and the Cheap FPGA+PCIe Prototype Roadmap.  
 > **Claims Verification Matrix:** See [docs/EVIDENCE_CLASSIFICATION_AND_REALITY_AUDIT.md](file:///f:/Projects/2026/Ongoing/RailNet/docs/EVIDENCE_CLASSIFICATION_AND_REALITY_AUDIT.md).
 
 Last updated September 2026.

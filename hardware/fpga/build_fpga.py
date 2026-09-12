@@ -9,7 +9,9 @@ Gate 2 Hardening (A-phase):
 - Validates XDC/LPF constraints for dual-clock CDC (host 62.5/125 MHz <-> core 80-100 MHz)
 - Generates wrapper-aware Vivado TCL (reads both core Verilog and wrapper + XDC)
 - Adds dual-clock target (railnet_dual_clk_top) for proper CDC P&R
-- Evidence tier strictly: SIMULATED (dry-run) vs SYNTHESIZED (tech-mapped) vs FPGA-MEASURED (routed)
+- Evidence tier strictly: SIMULATED (dry-run) vs SYNTHESIZED (tech-mapped) vs
+  PLACED & ROUTED (nextpnr timing estimate). Nothing here is FPGA-MEASURED:
+  that tier requires a physical board, which this project does not have.
 
 Outputs:
 - hardware/fpga/build/* (netlists, P&R logs, TCL/YS scripts, bitstream configs)
@@ -47,6 +49,18 @@ LPF_ECP5 = Path(__file__).resolve().parent / "ecp5_versa.lpf"
 WRAPPER_V = Path(__file__).resolve().parent / "railnet_pcie_wrapper.v"
 PLL_ECP5_V = Path(__file__).resolve().parent / "pll_ecp5.v"
 CLK_WIZ_ARTIX7_V = Path(__file__).resolve().parent / "clk_wiz_artix7.v"
+
+
+def _derive_pnr_status(pnr_exit_code: int, pnr_errors: list[str], routed_success: bool) -> str:
+    """Classify a P&R run.
+
+    A non-zero tool exit, any ERROR line, or a log that never reports routing
+    completion all mean the design did not route — so no timing or utilisation
+    number parsed from that log describes anything.
+    """
+    if pnr_exit_code != 0 or pnr_errors or not routed_success:
+        return "PNR_FAILED"
+    return "PNR_COMPLETED"
 
 
 def _validate_xdc(xdc_path: Path) -> dict:
@@ -238,10 +252,14 @@ def synth_and_pnr_ecp5(
         pnr_args.extend(["--lpf", LPF_ECP5.relative_to(ROOT).as_posix()])
 
     t1 = time.perf_counter()
+    # nextpnr signals failure by raising SystemExit. Swallowing it silently made
+    # an unroutable design look like a clean run: any Fmax or utilisation parsed
+    # from the log afterwards describes a P&R that never completed.
+    pnr_exit_code = 0
     try:
         run_nextpnr_ecp5(pnr_args)
-    except SystemExit:
-        pass
+    except SystemExit as exc:
+        pnr_exit_code = exc.code if isinstance(exc.code, int) else 1
     pnr_time = time.perf_counter() - t1
 
     if not pnr_log.exists():
@@ -278,15 +296,23 @@ def synth_and_pnr_ecp5(
 
     routed_success = "Routing complete." in pnr_text or "routing complete" in pnr_text.lower()
     timing_met = fmax is not None and fmax >= target_freq_mhz
+    pnr_errors = [ln.strip() for ln in pnr_text.splitlines() if ln.lstrip().startswith("ERROR:")]
+    pnr_status = _derive_pnr_status(pnr_exit_code, pnr_errors, routed_success)
+    failed = pnr_status == "PNR_FAILED"
 
     res = {
         "module": name,
         "platform": "Lattice ECP5",
         "target_device": f"LFE5U-{device.upper()}-{speed}{package}",
         "target_freq_mhz": target_freq_mhz,
-        "achieved_fmax_mhz": fmax,
-        "critical_path_ns": crit_delay,
-        "timing_met": timing_met,
+        "status": pnr_status,
+        "pnr_exit_code": pnr_exit_code,
+        "pnr_errors": pnr_errors,
+        "pnr_log": pnr_log.as_posix(),
+        # Numbers parsed from a failed run describe nothing; do not publish them.
+        "achieved_fmax_mhz": None if failed else fmax,
+        "critical_path_ns": None if failed else crit_delay,
+        "timing_met": False if failed else timing_met,
         "routed_success": routed_success,
         "resources": {
             "lut4": lut_count,
@@ -297,11 +323,22 @@ def synth_and_pnr_ecp5(
         },
         "synthesis_wall_s": round(synth_time, 2),
         "pnr_wall_s": round(pnr_time, 2),
-        "evidence_tier": "FPGA-MEASURED (P&R Physical Implementation)",
+        # Tier 5, not Tier 6: nextpnr timing is a tool estimate on a device model.
+        # Tier 6 ("FPGA-MEASURED") requires a physical board, which this project
+        # does not have.
+        "evidence_tier": (
+            "NONE (P&R did not complete)"
+            if failed
+            else "PLACED & ROUTED (nextpnr-ecp5 static timing; no physical board)"
+        ),
         "lpf_validation": lpf_info,
     }
 
-    print(f"[{name} - ECP5] Done -> Fmax: {fmax} MHz | Crit Delay: {crit_delay} ns | LUT: {lut_count}, FF: {ff_count}, DSP: {dsp_count}\n")
+    if failed:
+        detail = pnr_errors[0] if pnr_errors else "design did not route"
+        print(f"[{name} - ECP5] P&R FAILED (exit {pnr_exit_code}) -> {detail} | log: {pnr_log}\n")
+    else:
+        print(f"[{name} - ECP5] Done -> Fmax: {fmax} MHz | Crit Delay: {crit_delay} ns | LUT: {lut_count}, FF: {ff_count}, DSP: {dsp_count}\n")
     return res
 
 
@@ -544,7 +581,7 @@ def get_default_targets(with_dual_clock: bool = False) -> dict:
     return targets
 
 
-def build_fpga(target_platform: str = "ecp5", dry_run: bool = False, device_override: str | None = None, with_wrapper: bool = False, with_dual_clock: bool = False) -> dict:
+def build_fpga(target_platform: str = "ecp5", dry_run: bool = False, device_override: str | None = None, with_wrapper: bool = False, with_dual_clock: bool = False, results_path: Path | None = None) -> dict:
     """Execute automated build for selected platform(s)."""
     targets = get_default_targets(with_dual_clock=with_dual_clock)
     # Filter: if with_wrapper without dual_clock, still include dual for wrapper sanity
@@ -583,10 +620,23 @@ def build_fpga(target_platform: str = "ecp5", dry_run: bool = False, device_over
             res = synth_and_pnr_artix7(name, mod, target_freq_mhz=freq, part=part, dry_run=dry_run, with_wrapper=use_wrapper)
             results["targets"][f"{name}_artix7"] = res
 
-    results_file = ROOT / "results" / "fpga_pnr_results.json"
+    failed_targets = [k for k, v in results["targets"].items() if v.get("status") == "PNR_FAILED"]
+    results["failed_targets"] = failed_targets
+    results["build_status"] = "FAILED" if failed_targets else "OK"
+
+    # A dry run generates scripts, not timing. Writing it to the evidence file
+    # would erase real P&R results, and the test suite runs dry-run builds.
+    if results_path is not None:
+        results_file = results_path
+    elif dry_run:
+        results_file = ROOT / "results" / "fpga_pnr_dryrun.json"
+    else:
+        results_file = ROOT / "results" / "fpga_pnr_results.json"
     results_file.parent.mkdir(parents=True, exist_ok=True)
     results_file.write_text(json.dumps(results, indent=2), encoding="utf-8")
     print(f"\n[OK] Results written to {results_file}")
+    if failed_targets:
+        print(f"[FAIL] P&R did not complete for: {', '.join(failed_targets)}")
     if with_wrapper:
         print(f"[OK] Wrapper validation: {results.get('wrapper_validation')}")
     return results
@@ -623,8 +673,13 @@ def main():
     )
     args = parser.parse_args()
 
-    build_fpga(target_platform=args.target, dry_run=args.dry_run, device_override=args.device, with_wrapper=args.with_wrapper, with_dual_clock=args.with_dual_clock)
+    results = build_fpga(target_platform=args.target, dry_run=args.dry_run, device_override=args.device, with_wrapper=args.with_wrapper, with_dual_clock=args.with_dual_clock)
+    # Exit non-zero when a target did not route, otherwise a failed P&R passes
+    # silently through CI.
+    if results.get("build_status") == "FAILED":
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

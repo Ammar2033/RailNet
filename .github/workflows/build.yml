@@ -32,7 +32,9 @@ jobs:
         run: |
           python hardware/fpga/build_fpga.py --target ecp5 --dry-run --with-dual-clock
           python hardware/fpga/build_fpga.py --target artix7 --dry-run --with-wrapper --with-dual-clock
-          cat results/fpga_pnr_results.json
+          # A dry run writes here; results/fpga_pnr_results.json holds real P&R
+          # evidence and must not be overwritten by script generation.
+          cat results/fpga_pnr_dryrun.json
 
       - name: Verify claims matrix (SIMULATED)
         run: |

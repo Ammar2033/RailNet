@@ -156,15 +156,42 @@ def test_ftdi_usb_bridge_packet_protocol():
     assert pkt_dma[3:] == payload
 
 
-def test_fpga_build_cli_dryrun():
+def test_fpga_build_cli_dryrun(tmp_path):
     """Test multi-target FPGA build engine dry-run mode for both ECP5 and Artix-7."""
-    res_ecp5 = build_fpga(target_platform="ecp5", dry_run=True)
+    # Report goes to tmp_path: a dry run must never overwrite
+    # results/fpga_pnr_results.json, which holds the real P&R evidence.
+    res_ecp5 = build_fpga(target_platform="ecp5", dry_run=True, results_path=tmp_path / "ecp5.json")
     assert res_ecp5["platform_selection"] == "ecp5"
     assert res_ecp5["dry_run"] is True
     assert "railnet_top_2x2_ecp5" in res_ecp5["targets"]
     assert res_ecp5["targets"]["railnet_top_2x2_ecp5"]["status"] == "DRY_RUN_SCRIPTS_GENERATED"
 
-    res_artix7 = build_fpga(target_platform="artix7", dry_run=True)
+    res_artix7 = build_fpga(target_platform="artix7", dry_run=True, results_path=tmp_path / "artix7.json")
     assert res_artix7["platform_selection"] == "artix7"
     assert "railnet_top_2x2_artix7" in res_artix7["targets"]
     assert res_artix7["targets"]["railnet_top_2x2_artix7"]["status"] == "DRY_RUN_SCRIPTS_GENERATED"
+
+
+def test_failed_pnr_is_not_reported_as_a_completed_run():
+    """A P&R that aborts must classify as PNR_FAILED.
+
+    Regression: nextpnr signals failure by raising SystemExit, which was caught
+    and ignored. An unroutable design was then recorded with the same shape as a
+    clean run (and tagged FPGA-MEASURED), while the build still exited 0. The
+    real failure this guards against is railnet_top_2x2 aborting with
+    "ERROR: IO 's_axis_tvalid' is unconstrained in LPF".
+    """
+    from hardware.fpga.build_fpga import _derive_pnr_status
+
+    unconstrained_io = ["ERROR: IO 's_axis_tvalid' is unconstrained in LPF"]
+
+    # Tool aborted, and it logged an error.
+    assert _derive_pnr_status(1, unconstrained_io, routed_success=False) == "PNR_FAILED"
+    # Exit code alone is enough.
+    assert _derive_pnr_status(1, [], routed_success=True) == "PNR_FAILED"
+    # An ERROR line alone is enough, even on a zero exit.
+    assert _derive_pnr_status(0, unconstrained_io, routed_success=True) == "PNR_FAILED"
+    # No "Routing complete." in the log is enough.
+    assert _derive_pnr_status(0, [], routed_success=False) == "PNR_FAILED"
+    # Only a clean, routed run counts.
+    assert _derive_pnr_status(0, [], routed_success=True) == "PNR_COMPLETED"

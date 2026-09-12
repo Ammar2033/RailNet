@@ -83,7 +83,7 @@ assert bf16_bits(logits_rail) == bf16_bits(logits_dense)  # SPEC Madde 2
 *   `hardware/rtl/noc.py:1` `PipelinedBroadcaster` fan-out `W*H` ve `ResultGatherConcentrator` `all_done` ağacı - 4 tile'da `PipelinedBroadcaster` 1 LUT, 256 tile'da `256 * 32` bit broadcast = 8192 wire, `CARRY4` ve `MUXF` sayısı kuadratik şişebilir. `nextpnr` `critical path 11.935 ns` 2x2 için, 16x16'da `>30 ns` (33 MHz) olursa `benchmarks/benchmark_fpga_prototype.py:88` `100 MHz` hedefi çöker.
 
 ### Evidence Gap
-*   `CLM-05` `83.79 MHz` sadece 2x2 için `FPGA-MEASURED`, `CLM-13` `572 mm² 2 chiplet` sadece `ppa_model.py` analitik, hiç `synth` ile doğrulanmadı. `final_snapshot.json:1` `GATE 5 P&R` `BLOCKED` ama `GATE 3` bile 4 tile için `BLOCKED` - ölçek hiç denenmedi.
+*   `CLM-05` `83.79 MHz` **hiç doğrulanmamış (2026-09-12):** 2x2 grid yönlendirilemiyor, iddia `UNSUBSTANTIATED`'a düşürüldü — yani ölçek sorunu bir yana, 4 karoda bile tamamlanmış bir P&R yok. `CLM-13` `572 mm² 2 chiplet` sadece `ppa_model.py` analitik, hiç `synth` ile doğrulanmadı. `final_snapshot.json:1` `GATE 5 P&R` `BLOCKED` ama `GATE 3` bile 4 tile için `BLOCKED` - ölçek hiç denenmedi.
 
 ### Feature Detayı
 **Yeni Script:** `hardware/research/scaling_study.py` (yeni, ~150 satır)
@@ -179,7 +179,7 @@ def retention_with_wear(loads_per_day=1):
 ## H-D: Supply-Chain Reproducibility (Docker + Pin)
 
 ### Problem
-*   `results/fpga_pnr_results.json:1` `achieved_fmax 83.79 MHz` hangi `yowasp-yosys 0.68` commit'i, `amaranth 0.5.5` ve `nextpnr` versiyonu ile üretildi belli değil. `pyproject.toml:1` `amaranth>=0.5` gevşek, `pip freeze` yok. `repro_full.log` 0 byte. Hakem `docker build && pytest` ile aynı `exact==total`'ı alamazsa reddeder.
+*   `results/fpga_pnr_results.json:1` içindeki `achieved_fmax 83.79 MHz` **artık yok** (2026-09-12: grid `PNR_FAILED`, `achieved_fmax_mhz: null`). Yeniden üretilebilirlik sorunu yine de geçerli: tamamlanan karo koşumlarının hangi `yowasp-yosys` / `amaranth` / `nextpnr` versiyonlarıyla üretildiği dosyaya yazılmıyor. `pyproject.toml:1` `amaranth>=0.5` gevşek, `pip freeze` yok. `repro_full.log` 0 byte. Hakem `docker build && pytest` ile aynı `exact==total`'ı alamazsa reddeder.
 *   `hardware/fpga/build_fpga.py:1` `yowasp` WASI FS Windows'ta `Can't open log file` hatası veriyor (görüldü), Linux'ta farklı davranıyor.
 
 ### Feature Detayı

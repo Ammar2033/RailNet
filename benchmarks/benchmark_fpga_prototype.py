@@ -1,7 +1,8 @@
 """End-to-End FPGA + PCIe Prototype Performance & Correctness Profiler (Gate 2 Hardened).
 
 Profiles the full hardware execution loop using:
-- Real routed FPGA Fmax (83.79 MHz from results/fpga_pnr_results.json).
+- Routed core clock from results/fpga_pnr_results.json, when a P&R run actually
+  completed. There is no physical board, so no figure here is hardware-measured.
 - Cycle-accurate timing model of RailNetTop grid and AXI4-Stream gather concentrator.
 - Sustained DMA payload transfer rate calculation over physical PCIe Gen2 x1 / x4 links.
 - Bit-exact numerical verification against PyTorch golden matrix multiplication.
@@ -21,31 +22,34 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def load_routed_fmax() -> float:
-    """Load the real routed Fmax from ECP5 physical P&R results."""
+DEFAULT_ASSUMED_FMAX_MHZ = 100.0  # the project's stated core_clk target, not a result
+
+
+def load_routed_fmax() -> float | None:
+    """Return the grid's routed Fmax, or None if no P&R run produced one.
+
+    Only a target that actually completed routing counts. The previous version
+    could not fail: it fell back to the *target* frequency (a constraint, not an
+    achievement), then to any other target's Fmax (one tile's clock, returned as
+    the grid's), and finally to a hardcoded 83.79 described as measured.
+    """
     pnr_file = ROOT / "results" / "fpga_pnr_results.json"
-    if pnr_file.exists():
-        try:
-            d = json.loads(pnr_file.read_text(encoding="utf-8"))
-            # Try new hardened format first (targets as dict), fallback to old single entry
-            if "targets" in d:
-                # Prefer railnet_top_2x2 or railnet_dual_clk_top
-                for key in ("railnet_top_2x2_ecp5", "railnet_top_2x2", "railnet_dual_clk_top_ecp5"):
-                    if key in d["targets"]:
-                        v = d["targets"][key].get("achieved_fmax_mhz") or d["targets"][key].get("target_freq_mhz")
-                        if v:
-                            return float(v)
-                # Fallback to any target with fmax
-                for v in d["targets"].values():
-                    if isinstance(v, dict) and v.get("achieved_fmax_mhz"):
-                        return float(v["achieved_fmax_mhz"])
-            # Old single-entry format
-            if "achieved_fmax_mhz" in d:
-                return float(d["achieved_fmax_mhz"])
-            return d["targets"]["railnet_top_2x2"]["achieved_fmax_mhz"]
-        except Exception:
-            pass
-    return 83.79  # Default to measured ECP5-85F routed Fmax
+    if not pnr_file.exists():
+        return None
+    try:
+        d = json.loads(pnr_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+    targets = d.get("targets", {})
+    for key in ("railnet_top_2x2_ecp5", "railnet_top_2x2", "railnet_dual_clk_top_ecp5"):
+        entry = targets.get(key)
+        if not isinstance(entry, dict) or entry.get("status") != "PNR_COMPLETED":
+            continue
+        fmax = entry.get("achieved_fmax_mhz")
+        if fmax:
+            return float(fmax)
+    return None
 
 
 def _try_measure_live_dma_bw(
@@ -124,7 +128,7 @@ def _try_measure_live_dma_bw(
 
 
 def profile_prototype_execution(
-    fmax_mhz: float = 83.79,
+    fmax_mhz: float | None = None,
     pcie_gen: int = 2,
     pcie_lanes: int = 1,
     num_tiles: int = 4,
@@ -171,10 +175,17 @@ def profile_prototype_execution(
     else:
         sustained_dma_bw_gbps = modelled_bw_gbps
 
+    if fmax_mhz is None:
+        fmax_mhz = DEFAULT_ASSUMED_FMAX_MHZ
+        clock_provenance = "ASSUMED (no completed P&R run; using the stated core_clk target)"
+    else:
+        clock_provenance = "PLACED & ROUTED (nextpnr-ecp5 estimate; no physical board)"
+
     core_cycle_time_ns = 1000.0 / fmax_mhz
     metrics = {
         "hardware_platform": "Lattice ECP5-85F (Open-Source) / QMTech Artix-7 (PCIe)",
-        "measured_fmax_mhz": fmax_mhz,
+        "core_fmax_mhz": fmax_mhz,
+        "clock_provenance": clock_provenance,
         "core_clock_period_ns": round(core_cycle_time_ns, 3),
         "pcie_configuration": f"PCIe Gen{pcie_gen} x{pcie_lanes}",
         "sustained_dma_bandwidth_gbps": sustained_dma_bw_gbps,
@@ -189,7 +200,7 @@ def profile_prototype_execution(
 
     print("=========================================================================")
     print(" RailNet FPGA + PCIe End-to-End Prototype Profiler & Accuracy Sign-off")
-    print(f" Measured Hardware Fmax: {fmax_mhz:.2f} MHz ({core_cycle_time_ns:.3f} ns period)")
+    print(f" Core clock: {fmax_mhz:.2f} MHz ({core_cycle_time_ns:.3f} ns period) - {clock_provenance}")
     print(f" Target PCIe Link: Gen{pcie_gen} x{pcie_lanes} ({sustained_dma_bw_gbps*1000:.0f} MB/s sustained DMA)")
     print(f" Evidence Tier: {evidence_tier}")
     if live_status and verbose:
@@ -237,7 +248,11 @@ def profile_prototype_execution(
             "total_e2e_latency_us": round(total_latency_ns / 1000.0, 3),
             "total_e2e_latency_ms": round(total_latency_ms, 5),
             "sustained_token_rate": round(tokens_per_sec, 1),
-            "bit_exact_numerical_match": True,
+            # golden_y is the software reference only. No hardware or RTL output
+            # is produced here, so there is nothing to compare it against; the
+            # previous hardcoded "bit_exact_numerical_match": True asserted a
+            # match that was never computed.
+            "hardware_output_compared": False,
             "golden_sample_output": golden_y,
         }
         metrics["evaluations"].append(eval_entry)
@@ -246,13 +261,13 @@ def profile_prototype_execution(
     out_file.parent.mkdir(parents=True, exist_ok=True)
     out_file.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
 
-    print(f"{'K (Dim)':>8} {'H2C (us)':>10} {'Core (us)':>10} {'C2H (us)':>10} {'Total (us)':>12} {'Rate (t/s)':>12} {'Exact Math':>12}")
+    print(f"{'K (Dim)':>8} {'H2C (us)':>10} {'Core (us)':>10} {'C2H (us)':>10} {'Total (us)':>12} {'Rate (t/s)':>12} {'HW match':>12}")
     print("-" * 80)
     for e in metrics["evaluations"]:
         print(
             f"{e['in_features_k']:>8} {e['dma_h2c_latency_us']:>10.2f} {e['core_compute_latency_us']:>10.2f} "
             f"{e['dma_c2h_latency_us']:>10.2f} {e['total_e2e_latency_us']:>12.2f} "
-            f"{e['sustained_token_rate']:>12.1f} {'PASS (100%)':>12}"
+            f"{e['sustained_token_rate']:>12.1f} {'n/a (model)':>12}"
         )
     print("=" * 80)
     print(f"\nPrototype metrics saved to: {out_file}\n")
