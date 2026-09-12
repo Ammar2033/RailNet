@@ -1,0 +1,40 @@
+{
+  "_comment": "First real static timing analysis of railnet_top in sky130. PRE-LAYOUT: ideal clocks, no placement, no routing, no extracted parasitics. This is not Gate 6 sign-off; post-route numbers will be worse. Committed because results/ and build/ are gitignored.",
+  "gate": "GATE 6 - STA (pre-layout only)",
+  "status": "PARTIAL - post-synthesis STA done, sign-off STA still open",
+  "date_utc": "2026-09-12",
+  "top_module": "railnet_top",
+  "constraint": {
+    "clock_port": "clk",
+    "clock_period_ns": 20.0,
+    "target_frequency_mhz": 50.0
+  },
+  "results": {
+    "tns_ns": 0.0,
+    "wns_ns": 0.0,
+    "worst_slack_setup_ns": 8.7,
+    "worst_slack_hold_ns": 0.19,
+    "setup_met": true,
+    "hold_met": true
+  },
+  "derived": {
+    "critical_path_ns": 11.3,
+    "implied_fmax_mhz": 88.5,
+    "how": "20.0 ns period - 8.70 ns setup slack = 11.30 ns critical path; 1/11.30 ns = 88.5 MHz"
+  },
+  "reading": "railnet_top closes 50 MHz comfortably in sky130 at the gate level, but the implied ceiling is about 88 MHz - well under half the 200 MHz the repository has carried as an architectural target. That target remains unproven and now has a pre-layout figure arguing against it.",
+  "caveats": [
+    "Post-synthesis STA: ideal clock, no clock tree, no placement, no routing, no SPEF parasitics",
+    "Post-route numbers are normally worse, so 88 MHz is an optimistic ceiling, not a result",
+    "Memories are flip-flops here (no SRAM macro is wired in), so this netlist is the 317,850-cell variant, not the 39,706-cell logic-only one",
+    "Single corner only (the flow's default), not multi-corner sign-off"
+  ],
+  "reproduction": {
+    "container_image": "efabless/openlane:latest",
+    "flow": "flow.tcl -design /work/designs/railnet_top -tag run_50mhz",
+    "pdk": "sky130A via volare c6d73a35f524070e85faff4a6a9eef49553ebc2b",
+    "source_log": "runs/run_50mhz/logs/synthesis/2-sta.log",
+    "post_synth_cells": 138654
+  },
+  "next_step": "Let the flow finish placement, CTS and routing, then read the post-route sign-off STA. After that, re-run at CLOCK_PERIOD 5.0 to test the 200 MHz claim directly."
+}

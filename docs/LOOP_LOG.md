@@ -68,12 +68,15 @@ three overnight turns did real work and could not push any of it).
    each, ending at 281 of 262,144 logit bits (~0.1%), with greedy generation
    still token-identical. A wrong checkpoint or a broken kernel would diverge at
    layer 0 and grow fast; this does not.
-   What remains open is whether it is same-graph drift or a platform float
-   difference — the original run was almost certainly macOS, this is
-   Windows/NumPy. The cheap decider is the Fraction oracle
-   (`docs/EXACTNESS.md` Tier 2) on one diverging layer: exact in rational
-   arithmetic means the platform is responsible.
-   **Do not restate the 0-mismatch claim until then.**
+   **Settled the same session, and in the project's favour.** The Fraction
+   oracle was run on layer 2, the first divergent layer: in exact rational
+   arithmetic `rail_oracle` and `dense_oracle` agree bit-for-bit. The rail
+   representation and kernel are mathematically exact, so the 281 bits are a
+   floating-point evaluation difference between this host (Windows/NumPy) and
+   the one that produced the published result (almost certainly macOS), not a
+   defect. Caveat: 4 output rows of one layer, not the whole model.
+   The claim should be restated as platform-dependent, or the reference
+   platform pinned — "0/262144" is true somewhere, just not everywhere.
 2. **ReRAM density, energy and TCO remain assumptions.** The entire
    "reprogrammable weight-in-silicon" thesis rests on them and no PDK or IP
    backs them.
